@@ -1,0 +1,5 @@
+{
+  "name": "WILDSCAN Enforcement Dashboard",
+  "description": "A high-tech monitoring platform for wildlife authorities to track illegal wildlife trade detected by AI scanners, featuring live alerts, spatial analysis via Google Maps, and case evidence management.",
+  "requestFramePermissions": []
+}
