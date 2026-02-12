@@ -112,18 +112,6 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           )}
         </div>
-        
-        <div className="h-8 w-px bg-slate-800"></div>
-
-        <div className="flex items-center gap-3 cursor-pointer group">
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-semibold text-slate-200">Insp. Rahman</p>
-            <p className="text-[10px] text-emerald-500 font-mono">Wildlife Authority Unit 4</p>
-          </div>
-          <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 overflow-hidden group-hover:border-emerald-500 transition-colors">
-            <img src="https://picsum.photos/seed/inspector/100/100" alt="avatar" />
-          </div>
-        </div>
       </div>
     </header>
   );
