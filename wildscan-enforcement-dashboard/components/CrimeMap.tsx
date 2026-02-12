@@ -258,6 +258,27 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     );
   }, [detections, parseTimestamp]);
 
+  const handleSeeAll = useCallback(() => {
+    const win = window as any;
+    if (!googleMap.current || !win.google || markerDetections.length === 0) return;
+
+    if (markerDetections.length === 1) {
+      const only = markerDetections[0];
+      if (!Number.isFinite(only.lat) || !Number.isFinite(only.lng)) return;
+      googleMap.current.setCenter({ lat: only.lat, lng: only.lng });
+      googleMap.current.setZoom(8);
+      return;
+    }
+
+    const bounds = new win.google.maps.LatLngBounds();
+    markerDetections.forEach((d) => {
+      if (!Number.isFinite(d.lat) || !Number.isFinite(d.lng)) return;
+      bounds.extend(new win.google.maps.LatLng(d.lat, d.lng));
+    });
+
+    googleMap.current.fitBounds(bounds, 80);
+  }, [markerDetections]);
+
   return (
     <div className="w-full h-full relative group">
       <div ref={mapRef} className="w-full h-full" />
@@ -269,10 +290,17 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       )}
       
       {/* HUD Overlays */}
-      <div className="absolute top-4 right-4 pointer-events-none space-y-2">
-         <div className="bg-slate-950/80 border border-emerald-500/20 px-3 py-1 rounded backdrop-blur text-[10px] font-mono text-emerald-400">
-           SAT_LOCK: ACTIVE
-         </div>
+      <div className="absolute top-4 right-4 space-y-2">
+        <div className="bg-slate-950/80 border border-emerald-500/20 px-3 py-1 rounded backdrop-blur text-[10px] font-mono text-emerald-400 pointer-events-none">
+          SAT_LOCK: ACTIVE
+        </div>
+        <button
+          type="button"
+          onClick={handleSeeAll}
+          className="px-3 py-2 rounded border border-emerald-500/40 bg-emerald-500/10 text-[10px] font-mono uppercase tracking-widest text-emerald-200 hover:border-emerald-400 hover:text-emerald-100"
+        >
+          See All
+        </button>
       </div>
 
       {/* Crosshair Simulation Overlay */}

@@ -7,7 +7,7 @@ import { jsPDF } from "jspdf";
 
 interface CaseDetailsProps {
   detection: Detection | null;
-  onStatusChange?: (caseId: string, status: Detection["status"]) => void;
+  onStatusChange?: (caseId: string, status: Detection["status"] | undefined) => void;
 }
 
 const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) => {
@@ -32,13 +32,6 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
     }
     const parsed = new Date(timestamp as string);
     return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : "N/A";
-  };
-
-  const buildStaticMapUrl = (lat: number, lng: number) => {
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "";
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-    const keyParam = apiKey ? `&key=${apiKey}` : "";
-    return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=12&size=800x400&maptype=roadmap&markers=color:red%7C${lat},${lng}${keyParam}`;
   };
 
   const loadImageDataUrl = async (url: string) => {
@@ -245,7 +238,6 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
   const buildReportHtml = () => {
     const aiSummary = aiAnalysis || "AI verification offline. Detection flagged based on metadata matching illegal trade patterns.";
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
-    const mapSnapshotUrl = buildStaticMapUrl(detection.lat, detection.lng);
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -305,13 +297,6 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
     <h2>Evidence Image</h2>
     <div class="box">
       ${detection.image_url ? `<img src="${detection.image_url}" alt="Evidence" style="width: 100%; border-radius: 8px;" />` : "N/A"}
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>Location Map</h2>
-    <div class="box">
-      ${mapSnapshotUrl ? `<img src="${mapSnapshotUrl}" alt="Map" style="width: 100%; border-radius: 8px;" />` : "N/A"}
     </div>
   </div>
 
@@ -404,9 +389,10 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
       doc.setFontSize(fontSize);
       doc.setTextColor(15, 23, 42);
       const lines = doc.splitTextToSize(text, pageWidth - margin * 2);
-      ensureSpace(lines.length * (fontSize + 3));
+      const lineHeight = fontSize + 6;
+      ensureSpace(lines.length * lineHeight);
       doc.text(lines, margin, y);
-      y += lines.length * (fontSize + 3) + 6;
+      y += lines.length * lineHeight + 6;
     };
 
     const addImageSection = async (title: string, url: string) => {
@@ -500,7 +486,6 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
     addParagraph(detection.description || "N/A");
 
     await addImageSection("Evidence Image", detection.image_url || "");
-    await addImageSection("Location Map", buildStaticMapUrl(detection.lat, detection.lng));
 
     addSectionTitle("Operational Notes");
     addBullets([
@@ -586,7 +571,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
               <div className="text-xs text-slate-300 leading-relaxed bg-gradient-to-r from-emerald-500/10 via-slate-900/70 to-slate-900/40 border border-emerald-500/30 p-4 rounded-lg">
                 <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono">Report Summary</div>
                 <div className="mt-2 text-slate-200">
-                  Case {detection.id} prepared with evidence highlights, location map, and AI risk assessment.
+                  Case {detection.id} prepared with evidence highlights and AI risk assessment.
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
                   <div className="bg-slate-900/60 border border-slate-800 rounded px-2 py-1">Priority: {detection.priority}</div>
@@ -700,10 +685,14 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
               <button
                 key={status}
                 type="button"
-                onClick={() => detection && onStatusChange?.(detection.id, status)}
+                onClick={() => {
+                  if (!detection) return;
+                  const nextStatus = detection.status === status ? undefined : status;
+                  onStatusChange?.(detection.id, nextStatus);
+                }}
                 className={`px-2 py-1 rounded border transition-all ${
                   detection.status === status
-                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-300"
+                    ? "bg-green-500/20 border-green-500 text-green-300"
                     : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600"
                 }`}
               >

@@ -8,7 +8,7 @@ import FiltersBar from './components/FiltersBar';
 import StatusStrip from './components/StatusStrip';
 import LoginPage from './components/LoginPage';
 import { Detection } from './types';
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "./firebase";
 
 const AUTH_STORAGE_KEY = "wildscan_dashboard_auth";
@@ -45,6 +45,14 @@ const App: React.FC = () => {
     if (normalized === "medium") return "Medium";
     if (normalized === "low") return "Low";
     return "Low";
+  };
+
+  const normalizeStatus = (value?: string): Detection["status"] => {
+    const normalized = value?.toLowerCase();
+    if (normalized === "resolved" || normalized === "successful") return "Resolved";
+    if (normalized === "investigating" || normalized === "under investigation") return "Investigating";
+    if (normalized === "pending") return "Pending";
+    return "Pending";
   };
 
   const resolveLocationName = (data: any) => {
@@ -99,7 +107,7 @@ const App: React.FC = () => {
         ? data.confidence
         : 0;
 
-    const status = (caseStatusById[doc.id] || data.status || "Pending") as Detection["status"];
+    const status = (caseStatusById[doc.id] || normalizeStatus(data.status) || "Pending") as Detection["status"];
     const trustKey = buildTrustKey(data);
     const trustScore = trustKey ? trustScoreByKey[trustKey] || 0 : 0;
 
@@ -125,6 +133,8 @@ const App: React.FC = () => {
   };
 
   // Listen to live data from Firestore
+  const CASE_STATUS_COLLECTION = "caseStatus";
+
   useEffect(() => {
     if (!isAuthenticated) return () => {};
     let unsubscribe = () => {};
@@ -200,6 +210,26 @@ const App: React.FC = () => {
       });
 
       setEvidenceByCase(nextMap);
+    });
+
+    return () => unsubscribe();
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return () => {};
+    if (!db) return () => {};
+
+    const statusRef = collection(db, CASE_STATUS_COLLECTION);
+    const unsubscribe = onSnapshot(statusRef, (snapshot: any) => {
+      const next: Record<string, Detection["status"]> = {};
+      snapshot.docs.forEach((docSnap: any) => {
+        const data = docSnap.data();
+        const status = data?.status as Detection["status"] | undefined;
+        if (status) {
+          next[docSnap.id] = status;
+        }
+      });
+      setCaseStatusById(next);
     });
 
     return () => unsubscribe();
@@ -369,6 +399,8 @@ const App: React.FC = () => {
       const currentSelectedExists = filteredDetections.find(d => d.id === selectedDetection?.id);
       if (!selectedDetection || !currentSelectedExists) {
         setSelectedDetection(filteredDetections[0]);
+      } else {
+        setSelectedDetection(currentSelectedExists);
       }
     } else {
       setSelectedDetection(null);
@@ -407,8 +439,35 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleStatusChange = useCallback((caseId: string, status: Detection["status"]) => {
-    setCaseStatusById((prev) => ({ ...prev, [caseId]: status }));
+  const handleStatusChange = useCallback((caseId: string, status: Detection["status"] | undefined) => {
+    setCaseStatusById((prev) => {
+      if (!status) {
+        const { [caseId]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [caseId]: status };
+    });
+
+    if (!db) return;
+    const statusDoc = doc(db, CASE_STATUS_COLLECTION, caseId);
+    if (!status) {
+      deleteDoc(statusDoc).catch((error) => {
+        console.error("Failed to clear case status:", error);
+      });
+
+      updateDoc(doc(db, "cases", caseId), { status: "Pending", updatedAt: serverTimestamp() }).catch((error) => {
+        console.error("Failed to reset case status on case:", error);
+      });
+      return;
+    }
+
+    setDoc(statusDoc, { caseId, status, updatedAt: serverTimestamp() }, { merge: true }).catch((error) => {
+      console.error("Failed to save case status:", error);
+    });
+
+    updateDoc(doc(db, "cases", caseId), { status, updatedAt: serverTimestamp() }).catch((error) => {
+      console.error("Failed to update case status on case:", error);
+    });
   }, []);
 
   if (!isAuthenticated) {
@@ -538,7 +597,10 @@ const App: React.FC = () => {
 
           {/* Details Sidebar */}
             <aside className="w-96 border-l border-emerald-500/20 bg-slate-900/80 backdrop-blur-md transition-all duration-300 overflow-hidden flex flex-col shadow-2xl">
-              <CaseDetails detection={selectedDetection} onStatusChange={handleStatusChange} />
+               <CaseDetails
+                 detection={selectedDetection}
+                 onStatusChange={handleStatusChange}
+               />
             </aside>
           </main>
         </div>
