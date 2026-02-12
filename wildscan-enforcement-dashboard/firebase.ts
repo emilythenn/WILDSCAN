@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, type Firestore } from "firebase/firestore";
+import { getAnalytics, isSupported as analyticsSupported } from "firebase/analytics";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCZtsOztWFKY35xZaudyKSGKy13IknU_lw",
@@ -11,7 +12,7 @@ const firebaseConfig = {
   measurementId: "G-YZ21Q43Q52"
 };
 
-const app = getApps().length === 0
+export const app = getApps().length === 0
   ? initializeApp(firebaseConfig)
   : getApp();
 
@@ -21,3 +22,10 @@ try {
 } catch (err) {
   console.warn("Firestore service is not available.", err);
 }
+
+export const analyticsPromise = analyticsSupported()
+  .then((supported) => (supported ? getAnalytics(app) : null))
+  .catch((err) => {
+    console.warn("Analytics is not available.", err);
+    return null;
+  });
