@@ -47,7 +47,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
 
     const timeoutId = window.setTimeout(() => {
       if (!win.google?.maps) {
-        setMapError("Google Maps failed to load. Check API key, billing, and referrer settings.");
+        setMapError("");
       }
     }, 2500);
 
