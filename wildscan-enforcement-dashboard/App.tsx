@@ -46,10 +46,28 @@ const App: React.FC = () => {
     return "Low";
   };
 
+  const resolveLocationName = (data: any) => {
+    if (typeof data?.location === "string") return data.location;
+
+    const location = data?.location ?? {};
+    const explicitName = location.name || data.location_name || data.locationName;
+    if (explicitName) return explicitName as string;
+
+    const parts = [
+      location.city,
+      location.district,
+      location.state,
+      location.province,
+      location.country,
+    ].filter((value) => typeof value === "string" && value.trim().length > 0);
+
+    return parts.length > 0 ? parts.join(", ") : "";
+  };
+
   const toDetection = (doc: { id: string; data: any }, evidence?: { fileUrl: string; platformSource?: string; aiSummary?: string }): Detection => {
     const data = doc.data ?? {};
     const location = data.location ?? {};
-    const createdAt = data.createdAt ?? data.timestamp;
+    const createdAt = data.createdAt ?? data.timestamp ?? data.detectedAt ?? data.updatedAt;
     let timestamp = createdAt;
     if (timestamp && typeof timestamp.toDate === "function") {
       timestamp = timestamp.toDate().toISOString();
@@ -65,19 +83,19 @@ const App: React.FC = () => {
 
     return {
       id: doc.id,
-      animal_type: data.speciesDetected || data.animal_type || data.caseName || "",
+      animal_type: data.speciesDetected || data.animal_type || data.caseName || data.case_name || "",
       case_name: data.caseName || data.case_name || "",
-      source: data.source || evidence?.platformSource || "",
+      source: data.source || data.platformSource || evidence?.platformSource || "",
       image_url: evidence?.fileUrl || data.image_url || data.imageUrl || "",
       lat: typeof location.lat === "number" ? location.lat : typeof data.lat === "number" ? data.lat : 0,
       lng: typeof location.lng === "number" ? location.lng : typeof data.lng === "number" ? data.lng : 0,
       timestamp,
       priority: normalizePriority(data.priority),
       confidence,
-      location_name: location.state || data.location_name || "",
+      location_name: resolveLocationName(data),
       user_handle: data.user_handle,
       post_url: data.post_url,
-      description: data.description || evidence?.aiSummary || data.status || "",
+      description: data.description || data.summary || evidence?.aiSummary || data.status || "",
     };
   };
 
@@ -95,10 +113,15 @@ const App: React.FC = () => {
       setFirestoreStatus("connecting");
       const q = query(collection(db, "cases"), orderBy("createdAt", "desc"));
       unsubscribe = onSnapshot(q, (snapshot: any) => {
-        if (!snapshot.empty) {
-          const nextDocs = snapshot.docs.map((doc: any) => ({ id: doc.id, data: doc.data() }));
-          setCaseDocs(nextDocs);
+        if (snapshot.empty) {
+          setCaseDocs([]);
+          setFirestoreStatus("connected");
+          setFirestoreError(null);
+          return;
         }
+
+        const nextDocs = snapshot.docs.map((doc: any) => ({ id: doc.id, data: doc.data() }));
+        setCaseDocs(nextDocs);
         setFirestoreStatus("connected");
         setFirestoreError(null);
       }, (error) => {
@@ -121,7 +144,10 @@ const App: React.FC = () => {
 
     const q = query(collection(db, "evidence"), orderBy("uploadedAt", "desc"));
     unsubscribe = onSnapshot(q, (snapshot: any) => {
-      if (snapshot.empty) return;
+      if (snapshot.empty) {
+        setEvidenceByCase({});
+        return;
+      }
 
       const nextMap: Record<string, { fileUrl: string; uploadedAt?: string; platformSource?: string; aiSummary?: string }> = {};
       snapshot.docs.forEach((doc: any) => {
