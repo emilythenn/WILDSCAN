@@ -19,6 +19,23 @@ View your app in AI Studio: https://ai.studio/apps/drive/1Cobr64U6Dn0YlqqGCRbJT4
 3. Run the app:
    `npm run dev`
 
+## Features
+
+- Secure enforcement login gate with email, password, and access key checks (stored in local storage).
+- Live Firestore streaming for `cases` with real-time updates and ordering by newest first.
+- Evidence enrichment by linking latest `evidence` record to each case (image URL, platform source, AI summary).
+- Global search across species, case name, location, source, and case ID.
+- Priority filtering (High/Medium/Low), source filtering, and minimum-confidence slider.
+- Status strip with totals, priority counts, average confidence, and recent activity sparkline.
+- Alert feed carousel with quick selection and priority badges.
+- Google Maps visualization with themed map, clickable markers, and optional heatmap layer.
+- Case details sidebar with evidence image viewer and toggleable fit/fill mode.
+- Gemini AI risk assessment for each case (with offline fallback messaging).
+- Evidence report generator with simulated processing logs.
+- Report downloads in PDF and Word formats.
+- In-app notifications and browser system notifications for new cases.
+- Firestore connection status indicator (Live/Connecting/Error/Offline).
+
 ## Firestore Rules (Suggested for Local Testing)
 
 If you do not see data from the `cases` collection, ensure your Firestore rules allow reads for your current setup.
