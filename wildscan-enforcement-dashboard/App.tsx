@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Activity } from 'lucide-react';
+import { Activity, MapPin } from 'lucide-react';
 import Header from './components/Header';
 import AlertFeed from './components/AlertFeed';
 import CrimeMap from './components/CrimeMap';
@@ -15,11 +15,8 @@ const App: React.FC = () => {
   const [detections, setDetections] = useState<Detection[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDetection, setSelectedDetection] = useState<Detection | null>(null);
-  const [severityFilter, setSeverityFilter] = useState<Detection["priority"][]>([
-    "High",
-    "Medium",
-    "Low",
-  ]);
+  const allPriorities: Detection["priority"][] = ["High", "Medium", "Low"];
+  const [severityFilter, setSeverityFilter] = useState<Detection["priority"][]>(allPriorities);
   const [sourceFilter, setSourceFilter] = useState("All");
   const [minConfidence, setMinConfidence] = useState(0);
   const [showHeatmap, setShowHeatmap] = useState(false);
@@ -204,6 +201,15 @@ const App: React.FC = () => {
     };
   }, [filteredDetections]);
 
+  const priorityIconColor: Record<Detection["priority"], string> = {
+    High: "text-red-400",
+    Medium: "text-amber-400",
+    Low: "text-emerald-400",
+  };
+  const selectedPriorityColor = selectedDetection
+    ? priorityIconColor[selectedDetection.priority]
+    : "text-slate-500";
+
   const showSystemNotification = useCallback((title: string, body: string, onClick?: () => void) => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
 
@@ -297,21 +303,19 @@ const App: React.FC = () => {
   }, []);
 
   const handleToggleSeverity = useCallback((level: Detection["priority"]) => {
-    setSeverityFilter((prev) => {
-      const isActive = prev.includes(level);
-      if (isActive && prev.length === 1) {
-        return prev;
-      }
-      return isActive ? prev.filter((item) => item !== level) : [...prev, level];
-    });
-  }, []);
+    setSeverityFilter([level]);
+  }, [allPriorities]);
+
+  const handleSelectAllSeverities = useCallback(() => {
+    setSeverityFilter(allPriorities);
+  }, [allPriorities]);
 
   const handleResetFilters = useCallback(() => {
-    setSeverityFilter(["High", "Medium", "Low"]);
+    setSeverityFilter(allPriorities);
     setSourceFilter("All");
     setMinConfidence(0);
     setShowHeatmap(false);
-  }, []);
+  }, [allPriorities]);
 
   return (
     <div
@@ -342,6 +346,7 @@ const App: React.FC = () => {
           availableSources={availableSources}
           showHeatmap={showHeatmap}
           onToggleSeverity={handleToggleSeverity}
+          onSelectAllSeverities={handleSelectAllSeverities}
           onSourceChange={setSourceFilter}
           onMinConfidenceChange={setMinConfidence}
           onToggleHeatmap={() => setShowHeatmap((prev) => !prev)}
@@ -405,15 +410,21 @@ const App: React.FC = () => {
                {/* HUD Overlays */}
                <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2 pointer-events-none">
                  <div className="bg-slate-900/80 backdrop-blur-md border border-emerald-500/30 p-3 rounded-lg shadow-2xl">
-                    <h3 className="text-emerald-400 text-[10px] uppercase font-mono mb-2">System Telemetry</h3>
-                    <div className="flex flex-col gap-1">
+                    <h3 className="text-emerald-400 text-[10px] uppercase font-mono mb-2">Location Priority</h3>
+                    <div className="flex flex-col gap-2 text-[10px] text-slate-300 font-mono">
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                        <span className="text-[10px] text-slate-300 font-mono">DB_LINK: ESTABLISHED</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                        <span className="text-[10px] text-slate-300 font-mono">GEO_LOCK: STABLE</span>
+                        <div className="flex items-center gap-1">
+                          <MapPin size={12} className="text-red-400" />
+                          <span>High</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <MapPin size={12} className="text-amber-400" />
+                          <span>Medium</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <MapPin size={12} className="text-emerald-400" />
+                          <span>Low</span>
+                        </div>
                       </div>
                     </div>
                  </div>

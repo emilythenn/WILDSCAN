@@ -9,6 +9,7 @@ interface FiltersBarProps {
   availableSources: string[];
   showHeatmap: boolean;
   onToggleSeverity: (level: Detection["priority"]) => void;
+  onSelectAllSeverities: () => void;
   onSourceChange: (value: string) => void;
   onMinConfidenceChange: (value: number) => void;
   onToggleHeatmap: () => void;
@@ -28,11 +29,16 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   availableSources,
   showHeatmap,
   onToggleSeverity,
+  onSelectAllSeverities,
   onSourceChange,
   onMinConfidenceChange,
   onToggleHeatmap,
   onReset,
 }) => {
+  const isAllSelected = (Object.keys(severityStyles) as Detection["priority"]).every((level) =>
+    severityFilter.includes(level)
+  );
+
   return (
     <div className="bg-slate-950/80 border-b border-emerald-500/20 px-6 py-3 flex flex-wrap items-center gap-3">
       <div className="flex items-center gap-2 text-[10px] text-emerald-400 font-mono uppercase tracking-widest">
@@ -41,8 +47,18 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
+        <button
+          onClick={onSelectAllSeverities}
+          className={`px-2 py-1 rounded border text-[10px] font-mono uppercase tracking-widest transition-all ${
+            isAllSelected
+              ? "bg-emerald-500/10 border-emerald-500 text-emerald-300"
+              : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600"
+          }`}
+        >
+          All
+        </button>
         {(Object.keys(severityStyles) as Detection["priority"][]).map((level) => {
-          const isActive = severityFilter.includes(level);
+          const isActive = !isAllSelected && severityFilter.includes(level);
           return (
             <button
               key={level}

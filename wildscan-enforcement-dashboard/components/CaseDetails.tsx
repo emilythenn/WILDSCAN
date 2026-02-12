@@ -104,6 +104,16 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
   }
 
   const formattedDate = formatTimestamp(detection.timestamp);
+  const priorityIconColor: Record<Detection["priority"], string> = {
+    High: "text-red-400",
+    Medium: "text-amber-400",
+    Low: "text-emerald-400",
+  };
+  const priorityBadgeClass: Record<Detection["priority"], string> = {
+    High: "bg-red-500/10 border-red-500 text-red-500",
+    Medium: "bg-amber-500/10 border-amber-500 text-amber-400",
+    Low: "bg-emerald-500/10 border-emerald-500 text-emerald-500",
+  };
 
   const buildReportText = () => {
     const aiSummary = aiAnalysis || "AI verification offline. Detection flagged based on metadata matching illegal trade patterns.";
@@ -475,9 +485,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
 
       <div className="p-6 border-b border-emerald-500/20">
         <div className="flex items-start justify-between mb-2">
-          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${
-            detection.priority === 'High' ? 'bg-red-500/10 border-red-500 text-red-500' : 'bg-emerald-500/10 border-emerald-500 text-emerald-500'
-          }`}>
+          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${priorityBadgeClass[detection.priority]}`}>
             {detection.priority} Priority Case
           </span>
           <div className="text-[10px] text-slate-500 font-mono">ID: {detection.id}</div>
@@ -532,7 +540,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
           <div className="bg-slate-800/30 p-3 rounded-lg border border-slate-800 hover:border-emerald-500/30 transition-colors">
             <p className="text-[10px] text-slate-500 font-mono uppercase mb-1">Geo-Location</p>
             <div className="flex items-center gap-2">
-               <MapPin size={16} className="text-emerald-400" />
+               <MapPin size={16} className={priorityIconColor[detection.priority]} />
                <span className="text-sm font-semibold truncate text-slate-200">{detection.location_name}</span>
             </div>
           </div>
