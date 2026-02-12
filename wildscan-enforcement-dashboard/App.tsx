@@ -29,14 +29,15 @@ const App: React.FC = () => {
   const [severityFilter, setSeverityFilter] = useState<Detection["priority"][]>(allPriorities);
   const [sourceFilter, setSourceFilter] = useState("All");
   const [minConfidence, setMinConfidence] = useState(0);
-  const [showHeatmap, setShowHeatmap] = useState(false);
   const [notifications, setNotifications] = useState<{ id: string; caseId: string; title: string; description: string; time: string }[]>([]);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const hasRequestedNotifications = useRef(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
   const [firestoreStatus, setFirestoreStatus] = useState<"connecting" | "connected" | "error" | "offline">("connecting");
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
-  const [evidenceByCase, setEvidenceByCase] = useState<Record<string, { fileUrl: string; platformSource?: string; aiSummary?: string }>>({});
+  const [evidenceByCase, setEvidenceByCase] = useState<Record<string, { fileUrl: string; platformSource?: string; aiSummary?: string; evidenceHash?: string }>>({});
+  const [caseStatusById, setCaseStatusById] = useState<Record<string, Detection["status"]>>({});
 
   const normalizePriority = (value?: string): Detection["priority"] => {
     const normalized = value?.toLowerCase();
@@ -64,7 +65,24 @@ const App: React.FC = () => {
     return parts.length > 0 ? parts.join(", ") : "";
   };
 
-  const toDetection = (doc: { id: string; data: any }, evidence?: { fileUrl: string; platformSource?: string; aiSummary?: string }): Detection => {
+  const buildTrustKey = (data: any) => {
+    const species = (data?.speciesDetected || data?.animal_type || data?.caseName || data?.case_name || "").toString().trim().toLowerCase();
+    const locationName = resolveLocationName(data).toString().trim().toLowerCase();
+    if (!species && !locationName) return "";
+    return `${species}||${locationName}`;
+  };
+
+  const trustScoreByKey = useMemo(() => {
+    const counts: Record<string, number> = {};
+    caseDocs.forEach((doc) => {
+      const key = buildTrustKey(doc.data);
+      if (!key) return;
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    return counts;
+  }, [caseDocs]);
+
+  const toDetection = (doc: { id: string; data: any }, evidence?: { fileUrl: string; platformSource?: string; aiSummary?: string; evidenceHash?: string }): Detection => {
     const data = doc.data ?? {};
     const location = data.location ?? {};
     const createdAt = data.createdAt ?? data.timestamp ?? data.detectedAt ?? data.updatedAt;
@@ -81,6 +99,10 @@ const App: React.FC = () => {
         ? data.confidence
         : 0;
 
+    const status = (caseStatusById[doc.id] || data.status || "Pending") as Detection["status"];
+    const trustKey = buildTrustKey(data);
+    const trustScore = trustKey ? trustScoreByKey[trustKey] || 0 : 0;
+
     return {
       id: doc.id,
       animal_type: data.speciesDetected || data.animal_type || data.caseName || data.case_name || "",
@@ -96,6 +118,9 @@ const App: React.FC = () => {
       user_handle: data.user_handle,
       post_url: data.post_url,
       description: data.description || data.summary || evidence?.aiSummary || data.status || "",
+      status,
+      evidence_hash: evidence?.evidenceHash || data.evidenceHash || data.hash || data.sha256,
+      trust_score: trustScore,
     };
   };
 
@@ -149,13 +174,14 @@ const App: React.FC = () => {
         return;
       }
 
-      const nextMap: Record<string, { fileUrl: string; uploadedAt?: string; platformSource?: string; aiSummary?: string }> = {};
+      const nextMap: Record<string, { fileUrl: string; uploadedAt?: string; platformSource?: string; aiSummary?: string; evidenceHash?: string }> = {};
       snapshot.docs.forEach((doc: any) => {
         const data = doc.data();
         const caseId = data.caseId as string | undefined;
         const fileUrl = data.fileUrl as string | undefined;
         const platformSource = data.platformSource as string | undefined;
         const aiSummary = data.aiSummary as string | undefined;
+        const evidenceHash = data.evidenceHash || data.hash || data.sha256;
         if (!caseId || !fileUrl) return;
         let uploadedAt = data.uploadedAt;
         if (uploadedAt && typeof uploadedAt.toDate === "function") {
@@ -163,13 +189,13 @@ const App: React.FC = () => {
         }
 
         if (!nextMap[caseId]) {
-          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary };
+          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary, evidenceHash };
           return;
         }
 
         const current = nextMap[caseId];
         if (!current.uploadedAt || (uploadedAt && uploadedAt > current.uploadedAt)) {
-          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary };
+          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary, evidenceHash };
         }
       });
 
@@ -182,7 +208,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const liveDetections = caseDocs.map((doc) => toDetection(doc, evidenceByCase[doc.id]));
     setDetections(liveDetections);
-  }, [caseDocs, evidenceByCase]);
+  }, [caseDocs, evidenceByCase, caseStatusById]);
 
   const availableSources = useMemo(() => {
     return Array.from(new Set(detections.map((d) => d.source))).sort();
@@ -282,7 +308,18 @@ const App: React.FC = () => {
   const handleNotificationClick = useCallback((caseId: string) => {
     handleOpenNotification(caseId);
     setIsNotificationsOpen(false);
+    setHasUnreadNotifications(false);
   }, [handleOpenNotification]);
+
+  const handleToggleNotifications = useCallback(() => {
+    setIsNotificationsOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        setHasUnreadNotifications(false);
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (detections.length === 0) return;
@@ -307,6 +344,8 @@ const App: React.FC = () => {
         const next = [...created, ...prev];
         return next.slice(0, 3);
       });
+
+      setHasUnreadNotifications(true);
 
       created.forEach((notice) => {
         setTimeout(() => {
@@ -352,7 +391,6 @@ const App: React.FC = () => {
     setSeverityFilter(allPriorities);
     setSourceFilter("All");
     setMinConfidence(0);
-    setShowHeatmap(false);
   }, [allPriorities]);
 
   const handleLoginSuccess = useCallback(() => {
@@ -367,6 +405,10 @@ const App: React.FC = () => {
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(AUTH_STORAGE_KEY);
     }
+  }, []);
+
+  const handleStatusChange = useCallback((caseId: string, status: Detection["status"]) => {
+    setCaseStatusById((prev) => ({ ...prev, [caseId]: status }));
   }, []);
 
   if (!isAuthenticated) {
@@ -396,7 +438,8 @@ const App: React.FC = () => {
             onSearch={setSearchQuery}
             notifications={notifications}
             isNotificationsOpen={isNotificationsOpen}
-            onToggleNotifications={() => setIsNotificationsOpen((prev) => !prev)}
+            hasUnreadNotifications={hasUnreadNotifications}
+            onToggleNotifications={handleToggleNotifications}
             onNotificationClick={handleNotificationClick}
             onLogout={handleLogout}
             firestoreStatus={firestoreStatus}
@@ -408,12 +451,10 @@ const App: React.FC = () => {
           sourceFilter={sourceFilter}
           minConfidence={minConfidence}
           availableSources={availableSources}
-          showHeatmap={showHeatmap}
           onToggleSeverity={handleToggleSeverity}
           onSelectAllSeverities={handleSelectAllSeverities}
           onSourceChange={setSourceFilter}
           onMinConfidenceChange={setMinConfidence}
-          onToggleHeatmap={() => setShowHeatmap((prev) => !prev)}
           onReset={handleResetFilters}
         />
 
@@ -468,7 +509,6 @@ const App: React.FC = () => {
                 detections={filteredDetections} 
                 selectedDetection={selectedDetection}
                 onMarkerClick={handleSelectDetection}
-                showHeatmap={showHeatmap}
                />
                
                {/* HUD Overlays */}
@@ -498,7 +538,7 @@ const App: React.FC = () => {
 
           {/* Details Sidebar */}
             <aside className="w-96 border-l border-emerald-500/20 bg-slate-900/80 backdrop-blur-md transition-all duration-300 overflow-hidden flex flex-col shadow-2xl">
-               <CaseDetails detection={selectedDetection} />
+              <CaseDetails detection={selectedDetection} onStatusChange={handleStatusChange} />
             </aside>
           </main>
         </div>

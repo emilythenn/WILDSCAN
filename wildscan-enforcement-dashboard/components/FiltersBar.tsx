@@ -1,5 +1,5 @@
 import React from "react";
-import { Flame, Layers, Filter, SlidersHorizontal } from "lucide-react";
+import { Flame, Filter, SlidersHorizontal } from "lucide-react";
 import { Detection } from "../types";
 
 interface FiltersBarProps {
@@ -7,12 +7,10 @@ interface FiltersBarProps {
   sourceFilter: string;
   minConfidence: number;
   availableSources: string[];
-  showHeatmap: boolean;
   onToggleSeverity: (level: Detection["priority"]) => void;
   onSelectAllSeverities: () => void;
   onSourceChange: (value: string) => void;
   onMinConfidenceChange: (value: number) => void;
-  onToggleHeatmap: () => void;
   onReset: () => void;
 }
 
@@ -27,12 +25,10 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   sourceFilter,
   minConfidence,
   availableSources,
-  showHeatmap,
   onToggleSeverity,
   onSelectAllSeverities,
   onSourceChange,
   onMinConfidenceChange,
-  onToggleHeatmap,
   onReset,
 }) => {
   const isAllSelected = (Object.keys(severityStyles) as Detection["priority"]).every((level) =>
@@ -103,20 +99,6 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
           className="w-28 accent-emerald-500"
         />
         <span className="text-[10px] text-slate-300 font-mono">{Math.round(minConfidence * 100)}%</span>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onToggleHeatmap}
-          className={`px-2 py-1 rounded border text-[10px] font-mono uppercase tracking-widest transition-all ${
-            showHeatmap
-              ? "bg-indigo-500/10 border-indigo-500 text-indigo-300"
-              : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600"
-          }`}
-        >
-          <Layers size={12} className="inline-block mr-1" />
-          Heatmap
-        </button>
       </div>
 
       <button

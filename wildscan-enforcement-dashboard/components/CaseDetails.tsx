@@ -7,9 +7,10 @@ import { jsPDF } from "jspdf";
 
 interface CaseDetailsProps {
   detection: Detection | null;
+  onStatusChange?: (caseId: string, status: Detection["status"]) => void;
 }
 
-const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
+const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportLogs, setReportLogs] = useState<string[]>([]);
   const [reportReady, setReportReady] = useState(false);
@@ -17,6 +18,9 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isImageFit, setIsImageFit] = useState(true);
+  const [evidenceHash, setEvidenceHash] = useState<string | null>(null);
+  const [hashError, setHashError] = useState<string | null>(null);
+  const [isHashing, setIsHashing] = useState(false);
 
   const formatTimestamp = (timestamp: Detection["timestamp"]) => {
     if (!timestamp) return "N/A";
@@ -28,6 +32,27 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
     }
     const parsed = new Date(timestamp as string);
     return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : "N/A";
+  };
+
+  const buildStaticMapUrl = (lat: number, lng: number) => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "";
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+    const keyParam = apiKey ? `&key=${apiKey}` : "";
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=12&size=800x400&maptype=roadmap&markers=color:red%7C${lat},${lng}${keyParam}`;
+  };
+
+  const loadImageDataUrl = async (url: string) => {
+    const response = await fetch(url, { mode: "cors" });
+    if (!response.ok) {
+      throw new Error("Unable to load image.");
+    }
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("Unable to read image."));
+      reader.readAsDataURL(blob);
+    });
   };
 
   const getResponseText = async (response: unknown) => {
@@ -84,6 +109,61 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
   }, [detection]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const buildEvidenceHash = async () => {
+      setEvidenceHash(null);
+      setHashError(null);
+
+      if (detection?.evidence_hash) {
+        setEvidenceHash(detection.evidence_hash);
+        setIsHashing(false);
+        return;
+      }
+
+      if (!detection?.image_url) {
+        setIsHashing(false);
+        return;
+      }
+
+      if (!window.crypto?.subtle) {
+        setHashError("SHA-256 not available in this browser.");
+        setIsHashing(false);
+        return;
+      }
+
+      setIsHashing(true);
+      try {
+        const response = await fetch(detection.image_url, { mode: "cors" });
+        if (!response.ok) {
+          throw new Error("Unable to fetch evidence image.");
+        }
+        const buffer = await response.arrayBuffer();
+        const hashBuffer = await window.crypto.subtle.digest("SHA-256", buffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+        if (!cancelled) {
+          setEvidenceHash(hashHex);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setHashError("Hash unavailable for this evidence.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsHashing(false);
+        }
+      }
+    };
+
+    buildEvidenceHash();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detection?.image_url]);
+
+  useEffect(() => {
     if (!isGenerating) {
       setReportLogs([]);
     }
@@ -123,13 +203,15 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
       "========================",
       `Case ID: ${detection.id}`,
       `Species: ${detection.animal_type}`,
+      `Status: ${detection.status || "Pending"}`,
+      `Trust Score: ${detection.trust_score ?? 0}`,
       `Priority: ${detection.priority}`,
       `Confidence: ${(detection.confidence * 100).toFixed(2)}% (${confidenceLabel})`,
       `Source: ${detection.source}`,
       `Location: ${detection.location_name}`,
       `Coordinates: ${detection.lat.toFixed(6)}, ${detection.lng.toFixed(6)}`,
       `Detected At: ${formattedDate}`,
-      `User Handle: ${detection.user_handle || "N/A"}`,
+      `Evidence Hash (SHA-256): ${evidenceHash || "N/A"}`,
       "",
       "Case Highlights:",
       `- Priority level indicates enforcement urgency (${detection.priority}).`,
@@ -144,6 +226,9 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
       "- Preserve digital evidence and timestamps for chain of custody.",
       "- Verify listing persistence and capture screenshots where possible.",
       "- Cross-check with existing watchlists and repeat offenders.",
+      "",
+      "Evidence Integrity:",
+      "- SHA-256 fingerprint stored to prove evidence has not been altered for Malaysian courts.",
       "",
       "Evidence Timeline:",
       "1) Detection recorded and cataloged in monitoring queue.",
@@ -160,6 +245,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
   const buildReportHtml = () => {
     const aiSummary = aiAnalysis || "AI verification offline. Detection flagged based on metadata matching illegal trade patterns.";
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
+    const mapSnapshotUrl = buildStaticMapUrl(detection.lat, detection.lng);
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -187,12 +273,14 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
     <div class="meta">
       <div><span class="label">Case ID:</span> ${detection.id}</div>
       <div><span class="label">Species:</span> ${detection.animal_type}</div>
+      <div><span class="label">Status:</span> ${detection.status || "Pending"}</div>
+      <div><span class="label">Trust Score:</span> ${detection.trust_score ?? 0}</div>
       <div><span class="label">Confidence:</span> ${(detection.confidence * 100).toFixed(2)}% (${confidenceLabel})</div>
       <div><span class="label">Source:</span> ${detection.source}</div>
       <div><span class="label">Location:</span> ${detection.location_name}</div>
       <div><span class="label">Coordinates:</span> ${detection.lat.toFixed(6)}, ${detection.lng.toFixed(6)}</div>
       <div><span class="label">Detected At:</span> ${formattedDate}</div>
-      <div><span class="label">User Handle:</span> ${detection.user_handle || "N/A"}</div>
+      <div><span class="label">Evidence Hash:</span> ${evidenceHash || "N/A"}</div>
     </div>
   </div>
 
@@ -214,6 +302,20 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
   </div>
 
   <div class="section">
+    <h2>Evidence Image</h2>
+    <div class="box">
+      ${detection.image_url ? `<img src="${detection.image_url}" alt="Evidence" style="width: 100%; border-radius: 8px;" />` : "N/A"}
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Location Map</h2>
+    <div class="box">
+      ${mapSnapshotUrl ? `<img src="${mapSnapshotUrl}" alt="Map" style="width: 100%; border-radius: 8px;" />` : "N/A"}
+    </div>
+  </div>
+
+  <div class="section">
     <h2>Operational Notes</h2>
     <div class="box">
       <ul>
@@ -221,6 +323,14 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
         <li>Verify listing persistence and capture screenshots where possible.</li>
         <li>Cross-check with existing watchlists and repeat offenders.</li>
       </ul>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Evidence Integrity</h2>
+    <div class="box">
+      <p><strong>SHA-256 Fingerprint:</strong> ${evidenceHash || "N/A"}</p>
+      <p>Hashing ensures the evidence remains tamper-proof for Malaysian courts.</p>
     </div>
   </div>
 
@@ -259,7 +369,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
     downloadBlob(blob, `${reportContent.filename}.doc`);
   };
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     if (!reportContent) return;
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -299,6 +409,27 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
       y += lines.length * (fontSize + 3) + 6;
     };
 
+    const addImageSection = async (title: string, url: string) => {
+      addSectionTitle(title);
+      if (!url) {
+        addParagraph("N/A", 10);
+        return;
+      }
+      try {
+        const dataUrl = await loadImageDataUrl(url);
+        const imageProps = doc.getImageProperties(dataUrl);
+        const maxWidth = pageWidth - margin * 2;
+        const ratio = imageProps.height / imageProps.width;
+        const height = Math.min(260, maxWidth * ratio);
+        ensureSpace(height + 12);
+        const format = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+        doc.addImage(dataUrl, format, margin, y, maxWidth, height);
+        y += height + 12;
+      } catch (err) {
+        addParagraph("Image unavailable.", 10);
+      }
+    };
+
     const addBullets = (items: string[]) => {
       items.forEach((item) => {
         addParagraph(`- ${item}`, 10);
@@ -332,12 +463,13 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
     const meta = [
       [`Case ID`, detection.id],
       [`Species`, detection.animal_type],
+      [`Status`, detection.status || "Pending"],
+      [`Trust Score`, `${detection.trust_score ?? 0}`],
       [`Confidence`, `${(detection.confidence * 100).toFixed(2)}% (${confidenceLabel})`],
       [`Source`, detection.source],
       [`Location`, detection.location_name],
       [`Coordinates`, `${detection.lat.toFixed(6)}, ${detection.lng.toFixed(6)}`],
       [`Detected At`, formattedDate],
-      [`User Handle`, detection.user_handle || "N/A"],
     ];
 
     const colWidth = (pageWidth - margin * 2) / 2;
@@ -367,12 +499,19 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
     addSectionTitle("Description");
     addParagraph(detection.description || "N/A");
 
+    await addImageSection("Evidence Image", detection.image_url || "");
+    await addImageSection("Location Map", buildStaticMapUrl(detection.lat, detection.lng));
+
     addSectionTitle("Operational Notes");
     addBullets([
       "Preserve digital evidence and timestamps for chain of custody.",
       "Verify listing persistence and capture screenshots where possible.",
       "Cross-check with existing watchlists and repeat offenders.",
     ]);
+
+    addSectionTitle("Evidence Integrity");
+    addParagraph(`SHA-256 Fingerprint: ${evidenceHash || "N/A"}`, 10);
+    addParagraph("Hashing ensures the evidence remains tamper-proof for Malaysian courts.", 10);
 
     addSectionTitle("Evidence Timeline");
     addParagraph("1) Detection recorded and cataloged in monitoring queue.");
@@ -424,7 +563,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
           <div className="flex items-center gap-2 text-emerald-500 mb-6">
             <Activity size={20} className="animate-pulse" />
             <h3 className="text-sm font-bold uppercase tracking-widest">
-              {reportReady ? "Evidence Report Ready" : "Generating Evidence Report"}
+              {reportReady ? "Prosecution Report Ready" : "Generating Prosecution Report"}
             </h3>
           </div>
           {!reportReady ? (
@@ -447,7 +586,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
               <div className="text-xs text-slate-300 leading-relaxed bg-gradient-to-r from-emerald-500/10 via-slate-900/70 to-slate-900/40 border border-emerald-500/30 p-4 rounded-lg">
                 <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono">Report Summary</div>
                 <div className="mt-2 text-slate-200">
-                  Case {detection.id} prepared with evidence highlights, operational notes, and AI risk assessment.
+                  Case {detection.id} prepared with evidence highlights, location map, and AI risk assessment.
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
                   <div className="bg-slate-900/60 border border-slate-800 rounded px-2 py-1">Priority: {detection.priority}</div>
@@ -544,6 +683,34 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
                <span className="text-sm font-semibold truncate text-slate-200">{detection.location_name}</span>
             </div>
           </div>
+          <div className="bg-slate-800/30 p-3 rounded-lg border border-slate-800 hover:border-emerald-500/30 transition-colors">
+            <p className="text-[10px] text-slate-500 font-mono uppercase mb-1">Trust Score</p>
+            <div className="flex items-center gap-2">
+               <Activity size={16} className="text-emerald-400" />
+               <span className="text-sm font-semibold text-slate-200">{detection.trust_score ?? 0}</span>
+            </div>
+            <div className="mt-1 text-[10px] text-slate-500">Community validation count</div>
+          </div>
+        </div>
+
+        <div className="bg-slate-800/30 p-3 rounded-lg border border-slate-800">
+          <p className="text-[10px] text-slate-500 font-mono uppercase mb-2">Case Status</p>
+          <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest">
+            {(["Pending", "Investigating", "Resolved"] as Detection["status"][]).map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => detection && onStatusChange?.(detection.id, status)}
+                className={`px-2 py-1 rounded border transition-all ${
+                  detection.status === status
+                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-300"
+                    : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600"
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -552,14 +719,19 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
           </div>
           <div className="space-y-2 text-xs text-slate-400 bg-slate-950/80 p-4 rounded-lg border border-slate-800 group">
             <div className="flex justify-between border-b border-slate-800/50 pb-2">
-              <span className="text-slate-500">Username:</span>
-              <span className="text-emerald-400 font-mono">
-                {detection.user_handle ? `@${detection.user_handle}` : ""}
-              </span>
-            </div>
-            <div className="flex justify-between border-b border-slate-800/50 pb-2">
               <span className="text-slate-500">Coordinates:</span>
               <span className="text-slate-300 font-mono">{detection.lat.toFixed(6)}, {detection.lng.toFixed(6)}</span>
+            </div>
+            <div className="flex flex-col gap-1 border-b border-slate-800/50 pb-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Evidence Hash:</span>
+                <span className="text-emerald-400 font-mono break-all">
+                  {isHashing ? "Calculating..." : evidenceHash || "N/A"}
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-500">
+                {hashError || "SHA-256 fingerprint keeps evidence tamper-proof for Malaysian courts."}
+              </div>
             </div>
             <div className="pt-2">
               <p className="mb-2 text-slate-500 flex items-center gap-2">
@@ -586,7 +758,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
           className="w-full flex items-center justify-center gap-2 py-3.5 bg-emerald-500 text-slate-950 rounded-xl font-black text-sm transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:bg-emerald-400 active:scale-[0.98]"
         >
           <FileText size={18} />
-          GENERATE EVIDENCE REPORT
+          GENERATE PROSECUTION REPORT
         </button>
       </div>
 

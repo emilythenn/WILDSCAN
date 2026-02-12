@@ -14,6 +14,9 @@ export interface Detection {
   user_handle?: string;
   post_url?: string;
   description?: string;
+  status?: 'Pending' | 'Investigating' | 'Resolved';
+  evidence_hash?: string;
+  trust_score?: number;
 }
 
 export interface MapMarker {

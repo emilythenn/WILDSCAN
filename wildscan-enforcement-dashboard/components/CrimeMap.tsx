@@ -1,22 +1,42 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Detection } from '../types';
 
 interface CrimeMapProps {
   detections: Detection[];
   selectedDetection: Detection | null;
   onMarkerClick: (d: Detection) => void;
-  showHeatmap: boolean;
 }
 
-const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMarkerClick, showHeatmap }) => {
+const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMarkerClick }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   // Fix: Use any type for Google Maps objects as global namespace might not be defined in TS
   const googleMap = useRef<any | null>(null);
   const markersRef = useRef<{ [key: string]: any }>({});
-  const heatmapRef = useRef<any | null>(null);
   const infoWindowRef = useRef<any | null>(null);
+  const routeRendererRef = useRef<any | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [routeStatus, setRouteStatus] = useState<string | null>(null);
+
+  const parseTimestamp = useCallback((value: Detection["timestamp"]) => {
+    if (!value) return Number.NaN;
+    if (typeof value === "object" && value !== null && "toDate" in value) {
+      const maybeDate = (value as { toDate?: () => Date }).toDate?.();
+      if (maybeDate instanceof Date) return maybeDate.getTime();
+    }
+    const parsed = new Date(value as string).getTime();
+    return Number.isFinite(parsed) ? parsed : Number.NaN;
+  }, []);
+
+  const mapDetections = useMemo(() => detections, [detections]);
+
+  const markerDetections = useMemo(() => {
+    return mapDetections.filter((d) => Number.isFinite(d.lat) && Number.isFinite(d.lng));
+  }, [mapDetections]);
+
+  const getMarkerColor = useCallback((d: Detection) => {
+    return d.priority === 'High' ? '#ef4444' : d.priority === 'Medium' ? '#f59e0b' : '#10b981';
+  }, []);
 
   useEffect(() => {
     // Fix: Cast window to any to access google property without TS errors
@@ -61,21 +81,21 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
 
     // Clear old markers that are no longer in detections
     Object.keys(markersRef.current).forEach(id => {
-      if (!detections.find(d => d.id === id)) {
+      if (!markerDetections.find(d => d.id === id)) {
         markersRef.current[id].setMap(null);
         delete markersRef.current[id];
       }
     });
 
     // Add or update markers
-    detections.forEach(d => {
-      if (!Number.isFinite(d.lat) || !Number.isFinite(d.lng)) return;
+    markerDetections.forEach(d => {
+      const isSelected = selectedDetection?.id === d.id;
       const markerIcon = {
         path: "M12 2C7.59 2 4 5.59 4 10c0 5.47 6.63 11.87 7.02 12.23a1.5 1.5 0 0 0 1.96 0C13.37 21.87 20 15.47 20 10c0-4.41-3.59-8-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z",
-        fillColor: d.priority === 'High' ? '#ef4444' : '#10b981',
+        fillColor: getMarkerColor(d),
         fillOpacity: 1,
         strokeWeight: 0,
-        scale: 1.5,
+        scale: isSelected ? 2.2 : 1.5,
         anchor: new win.google.maps.Point(12, 24),
       };
 
@@ -94,6 +114,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
             ? `${Math.round(d.confidence * 100)}%`
             : "";
           const priority = d.priority || "";
+          const status = d.status || "Pending";
           if (infoWindowRef.current) {
             infoWindowRef.current.setContent(
               `<div style="font-family: 'Inter', sans-serif; font-size: 12px; color: #e2e8f0; background: #0f172a; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(16, 185, 129, 0.25); box-shadow: 0 10px 24px rgba(2, 6, 23, 0.55); min-width: 180px;">
@@ -103,6 +124,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
                 <div style="display: flex; gap: 8px; margin-bottom: 6px;">
                   ${priority ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.1); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;">${priority}</span>` : ""}
                   ${confidence ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.4); background: rgba(148, 163, 184, 0.1); font-size: 10px;">${confidence} Conf</span>` : ""}
+                  ${status ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(34, 197, 94, 0.4); background: rgba(34, 197, 94, 0.1); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;">${status}</span>` : ""}
                 </div>
                 <div style="color: #34d399; font-family: 'JetBrains Mono', monospace; font-size: 11px;">${coords}</div>
               </div>`
@@ -117,39 +139,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
         markersRef.current[d.id].setIcon(markerIcon);
       }
     });
-  }, [detections, onMarkerClick]);
-
-  useEffect(() => {
-    const win = window as any;
-    if (!googleMap.current || !win.google?.maps?.visualization) return;
-
-    if (!heatmapRef.current) {
-      heatmapRef.current = new win.google.maps.visualization.HeatmapLayer({
-        data: [],
-        radius: 28,
-        opacity: 0.75,
-      });
-    }
-
-    heatmapRef.current.setMap(showHeatmap ? googleMap.current : null);
-  }, [showHeatmap]);
-
-  useEffect(() => {
-    const win = window as any;
-    if (!heatmapRef.current || !win.google) return;
-
-    const weightedPoints = detections
-      .filter((d) => Number.isFinite(d.lat) && Number.isFinite(d.lng))
-      .map((d) => {
-      const priorityWeight = d.priority === "High" ? 3 : d.priority === "Medium" ? 2 : 1;
-      return {
-        location: new win.google.maps.LatLng(d.lat, d.lng),
-        weight: Math.max(0.5, d.confidence * priorityWeight),
-      };
-    });
-
-    heatmapRef.current.setData(weightedPoints);
-  }, [detections]);
+  }, [getMarkerColor, markerDetections, onMarkerClick, selectedDetection?.id]);
 
   useEffect(() => {
     // Fix: Use casted window to trigger map animations safely
@@ -167,6 +157,106 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       }
     }
   }, [selectedDetection]);
+
+  useEffect(() => {
+    const win = window as any;
+    if (!googleMap.current || !win.google || mapDetections.length === 0) return;
+
+    const nextBoundsKey = mapDetections
+      .map((d) => `${d.id}:${d.lat},${d.lng}`)
+      .sort()
+      .join("|");
+    if (googleMap.current.__boundsKey === nextBoundsKey) {
+      return;
+    }
+    googleMap.current.__boundsKey = nextBoundsKey;
+
+    if (mapDetections.length === 1) {
+      const only = mapDetections[0];
+      if (!Number.isFinite(only.lat) || !Number.isFinite(only.lng)) return;
+      googleMap.current.setCenter({ lat: only.lat, lng: only.lng });
+      googleMap.current.setZoom(8);
+      return;
+    }
+
+    const bounds = new win.google.maps.LatLngBounds();
+    mapDetections.forEach((d) => {
+      if (!Number.isFinite(d.lat) || !Number.isFinite(d.lng)) return;
+      bounds.extend(new win.google.maps.LatLng(d.lat, d.lng));
+    });
+
+    googleMap.current.fitBounds(bounds, 80);
+  }, [mapDetections]);
+
+  const handlePatrolRoute = useCallback(() => {
+    const win = window as any;
+    if (!googleMap.current || !win.google?.maps) {
+      setRouteStatus("Google Maps not ready.");
+      return;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+
+    const todayTargets = detections
+      .filter((d) => d.priority === "High")
+      .filter((d) => {
+        const time = parseTimestamp(d.timestamp);
+        return Number.isFinite(time) && time >= today.getTime() && time < tomorrow.getTime();
+      })
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 5);
+
+    if (todayTargets.length < 2) {
+      setRouteStatus("Not enough high-risk points today.");
+      if (routeRendererRef.current) {
+        routeRendererRef.current.setMap(null);
+      }
+      return;
+    }
+
+    const origin = { lat: todayTargets[0].lat, lng: todayTargets[0].lng };
+    const destination = { lat: todayTargets[todayTargets.length - 1].lat, lng: todayTargets[todayTargets.length - 1].lng };
+    const waypoints = todayTargets.slice(1, -1).map((d) => ({
+      location: { lat: d.lat, lng: d.lng },
+      stopover: true,
+    }));
+
+    if (!routeRendererRef.current) {
+      routeRendererRef.current = new win.google.maps.DirectionsRenderer({
+        suppressMarkers: true,
+        preserveViewport: true,
+        polylineOptions: {
+          strokeColor: "#38bdf8",
+          strokeOpacity: 0.9,
+          strokeWeight: 4,
+        },
+      });
+    }
+
+    routeRendererRef.current.setMap(googleMap.current);
+
+    const service = new win.google.maps.DirectionsService();
+    service.route(
+      {
+        origin,
+        destination,
+        waypoints,
+        optimizeWaypoints: true,
+        travelMode: win.google.maps.TravelMode.DRIVING,
+      },
+      (result: any, status: string) => {
+        if (status === "OK" && result) {
+          routeRendererRef.current.setDirections(result);
+          setRouteStatus("Optimized patrol route ready.");
+        } else {
+          setRouteStatus("Unable to build patrol route.");
+        }
+      }
+    );
+  }, [detections, parseTimestamp]);
 
   return (
     <div className="w-full h-full relative group">
@@ -192,6 +282,23 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
         <div className="absolute top-0 left-1/2 w-px h-8 bg-emerald-500/30"></div>
         <div className="absolute bottom-0 left-1/2 w-px h-8 bg-emerald-500/30"></div>
       </div>
+
+      <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-2">
+        <div className="bg-slate-900/85 backdrop-blur-md border border-emerald-500/30 p-3 rounded-lg shadow-2xl">
+          <h3 className="text-emerald-400 text-[10px] uppercase font-mono mb-2">Smart Patrol Route</h3>
+          <button
+            type="button"
+            onClick={handlePatrolRoute}
+            className="px-3 py-2 rounded border border-sky-400/60 bg-sky-400/10 text-[10px] font-mono uppercase tracking-widest text-sky-200 hover:border-sky-300 hover:text-sky-100"
+          >
+            Optimized Route Only
+          </button>
+          {routeStatus && (
+            <div className="mt-2 text-[10px] text-slate-400 font-mono">{routeStatus}</div>
+          )}
+        </div>
+      </div>
+
     </div>
   );
 };

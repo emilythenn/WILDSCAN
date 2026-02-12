@@ -6,6 +6,7 @@ interface HeaderProps {
   onSearch: (query: string) => void;
   notifications: { id: string; caseId: string; title: string; description: string; time: string }[];
   isNotificationsOpen: boolean;
+  hasUnreadNotifications: boolean;
   onToggleNotifications: () => void;
   onNotificationClick: (caseId: string) => void;
   onLogout: () => void;
@@ -17,6 +18,7 @@ const Header: React.FC<HeaderProps> = ({
   onSearch,
   notifications,
   isNotificationsOpen,
+  hasUnreadNotifications,
   onToggleNotifications,
   onNotificationClick,
   onLogout,
@@ -80,7 +82,7 @@ const Header: React.FC<HeaderProps> = ({
             aria-label="Toggle notifications"
           >
             <Bell className="text-slate-400 group-hover:text-emerald-400 transition-colors" size={20} />
-            {notifications.length > 0 && (
+            {hasUnreadNotifications && (
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-950"></span>
             )}
           </button>
