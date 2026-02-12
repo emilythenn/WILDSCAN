@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Detection } from '../types';
 import { Clock, MapPin, Share2, FileText, ShieldCheck, Download, Link as LinkIcon, AlertCircle, Activity } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai/web";
+import { GoogleGenAI } from "@google/genai";
 import { jsPDF } from "jspdf";
 
 interface CaseDetailsProps {
@@ -16,6 +16,34 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
   const [reportContent, setReportContent] = useState<{ text: string; html: string; filename: string } | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const formatTimestamp = (timestamp: Detection["timestamp"]) => {
+    if (!timestamp) return "N/A";
+    if (typeof timestamp === "object" && timestamp !== null && "toDate" in timestamp) {
+      const maybeDate = (timestamp as { toDate?: () => Date }).toDate?.();
+      if (maybeDate instanceof Date && Number.isFinite(maybeDate.getTime())) {
+        return maybeDate.toLocaleString();
+      }
+    }
+    const parsed = new Date(timestamp as string);
+    return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : "N/A";
+  };
+
+  const getResponseText = async (response: unknown) => {
+    if (typeof response === "string") return response;
+    if (response && typeof response === "object") {
+      const maybeText = (response as { text?: unknown }).text;
+      if (typeof maybeText === "string") return maybeText;
+      if (typeof maybeText === "function") {
+        const result = maybeText.call(response);
+        if (typeof result === "string") return result;
+        if (result && typeof (result as Promise<string>).then === "function") {
+          return await result;
+        }
+      }
+    }
+    return null;
+  };
 
   // Fix: Integrate Gemini AI to provide real-time verification and risk assessment
   useEffect(() => {
@@ -40,8 +68,8 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
               
               Provide a professional 2-sentence risk assessment regarding the legality and conservation status.`,
           });
-          // Fix: Extracting text output from GenerateContentResponse using .text property
-          setAiAnalysis((response as any).text || "Analysis completed.");
+          const responseText = await getResponseText(response);
+          setAiAnalysis(responseText || "Analysis completed.");
         } catch (err) {
           console.error("Gemini analysis failed:", err);
           setAiAnalysis("AI verification offline. Detection flagged based on metadata matching illegal trade patterns.");
@@ -73,6 +101,8 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
       </div>
     );
   }
+
+  const formattedDate = formatTimestamp(detection.timestamp);
 
   const buildReportText = () => {
     const aiSummary = aiAnalysis || "AI verification offline. Detection flagged based on metadata matching illegal trade patterns.";
@@ -374,8 +404,6 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
       }, index * 600);
     });
   };
-
-  const formattedDate = detection.timestamp ? new Date(detection.timestamp).toLocaleString() : 'N/A';
 
   return (
     <div className="flex flex-col h-full relative">
