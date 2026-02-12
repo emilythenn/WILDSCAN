@@ -28,12 +28,6 @@ const AlertFeed: React.FC<AlertFeedProps> = ({ detections, onSelect, selectedId 
               : 'bg-slate-800/40 border-slate-700 hover:border-slate-500 hover:bg-slate-800/60'}
           `}
         >
-          {/* Scanning Effect for selected item */}
-          {selectedId === detection.id && (
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="h-full w-[2px] bg-emerald-500/50 absolute animate-[scan_2s_linear_infinite]"></div>
-            </div>
-          )}
 
           <div className="flex gap-3 h-full">
             <div className="w-20 h-full rounded-lg overflow-hidden relative bg-slate-800">
@@ -67,10 +61,6 @@ const AlertFeed: React.FC<AlertFeedProps> = ({ detections, onSelect, selectedId 
         </div>
       ))}
       <style>{`
-        @keyframes scan {
-          from { transform: translateX(0); }
-          to { transform: translateX(256px); }
-        }
         .scrollbar-hide::-webkit-scrollbar {
           display: none;
         }

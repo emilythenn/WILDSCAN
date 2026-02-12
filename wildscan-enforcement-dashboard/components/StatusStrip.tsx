@@ -61,14 +61,6 @@ const StatusStrip: React.FC<StatusStripProps> = ({
         <div className="text-[10px] text-slate-500 mt-1">High priority open alerts</div>
       </div>
 
-      <div className="bg-slate-900/60 border border-slate-800 rounded-lg px-3 py-2">
-        <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono uppercase">
-          Last Update
-          <Clock size={12} className="text-emerald-400" />
-        </div>
-        <div className="text-xl font-bold text-slate-100 mt-1">{lastUpdated}</div>
-        <div className="text-[10px] text-slate-500 mt-1">Live feed sync</div>
-      </div>
     </div>
   );
 };

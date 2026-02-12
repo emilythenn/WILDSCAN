@@ -15,6 +15,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
   const googleMap = useRef<any | null>(null);
   const markersRef = useRef<{ [key: string]: any }>({});
   const heatmapRef = useRef<any | null>(null);
+  const infoWindowRef = useRef<any | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,6 +37,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
           { featureType: 'poi', stylers: [{ visibility: 'off' }] },
         ]
       });
+      infoWindowRef.current = new win.google.maps.InfoWindow();
     }
   }, []);
 
@@ -67,33 +69,52 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
 
     // Add or update markers
     detections.forEach(d => {
+      if (!Number.isFinite(d.lat) || !Number.isFinite(d.lng)) return;
+      const markerIcon = {
+        path: "M12 2C7.59 2 4 5.59 4 10c0 5.47 6.63 11.87 7.02 12.23a1.5 1.5 0 0 0 1.96 0C13.37 21.87 20 15.47 20 10c0-4.41-3.59-8-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z",
+        fillColor: d.priority === 'High' ? '#ef4444' : '#10b981',
+        fillOpacity: 1,
+        strokeWeight: 0,
+        scale: 1.5,
+        anchor: new win.google.maps.Point(12, 24),
+      };
+
       if (!markersRef.current[d.id]) {
         const marker = new win.google.maps.Marker({
           position: { lat: d.lat, lng: d.lng },
           map: googleMap.current,
           title: d.animal_type,
-          icon: {
-            path: win.google.maps.SymbolPath.CIRCLE,
-            fillColor: d.priority === 'High' ? '#ef4444' : '#10b981',
-            fillOpacity: 1,
-            strokeColor: '#000',
-            strokeWeight: 2,
-            scale: 8,
-          }
+          icon: markerIcon,
         });
 
-        marker.addListener('click', () => onMarkerClick(d));
+        marker.addListener('click', () => {
+          const locationLabel = d.location_name || "";
+          const coords = `${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`;
+          const confidence = Number.isFinite(d.confidence)
+            ? `${Math.round(d.confidence * 100)}%`
+            : "";
+          const priority = d.priority || "";
+          if (infoWindowRef.current) {
+            infoWindowRef.current.setContent(
+              `<div style="font-family: 'Inter', sans-serif; font-size: 12px; color: #e2e8f0; background: #0f172a; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(16, 185, 129, 0.25); box-shadow: 0 10px 24px rgba(2, 6, 23, 0.55); min-width: 180px;">
+                <div style="font-weight: 700; margin-bottom: 6px; color: #f8fafc;">${d.animal_type || "Case"}</div>
+                <div style="font-size: 10px; color: #10b981; text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 6px;">Case ${d.id}</div>
+                ${locationLabel ? `<div style="margin-bottom: 6px; color: #94a3b8;">${locationLabel}</div>` : ""}
+                <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+                  ${priority ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.1); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;">${priority}</span>` : ""}
+                  ${confidence ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.4); background: rgba(148, 163, 184, 0.1); font-size: 10px;">${confidence} Conf</span>` : ""}
+                </div>
+                <div style="color: #34d399; font-family: 'JetBrains Mono', monospace; font-size: 11px;">${coords}</div>
+              </div>`
+            );
+            infoWindowRef.current.open({ map: googleMap.current, anchor: marker });
+          }
+          onMarkerClick(d);
+        });
         markersRef.current[d.id] = marker;
       } else {
         // Update color if priority changed (though mock data is static)
-        markersRef.current[d.id].setIcon({
-          path: win.google.maps.SymbolPath.CIRCLE,
-          fillColor: d.priority === 'High' ? '#ef4444' : '#10b981',
-          fillOpacity: 1,
-          strokeColor: '#000',
-          strokeWeight: 2,
-          scale: 8,
-        });
+        markersRef.current[d.id].setIcon(markerIcon);
       }
     });
   }, [detections, onMarkerClick]);
@@ -117,7 +138,9 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     const win = window as any;
     if (!heatmapRef.current || !win.google) return;
 
-    const weightedPoints = detections.map((d) => {
+    const weightedPoints = detections
+      .filter((d) => Number.isFinite(d.lat) && Number.isFinite(d.lng))
+      .map((d) => {
       const priorityWeight = d.priority === "High" ? 3 : d.priority === "Medium" ? 2 : 1;
       return {
         location: new win.google.maps.LatLng(d.lat, d.lng),
@@ -132,6 +155,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     // Fix: Use casted window to trigger map animations safely
     const win = window as any;
     if (googleMap.current && selectedDetection && win.google) {
+      if (!Number.isFinite(selectedDetection.lat) || !Number.isFinite(selectedDetection.lng)) return;
       googleMap.current.panTo({ lat: selectedDetection.lat, lng: selectedDetection.lng });
       googleMap.current.setZoom(10);
       

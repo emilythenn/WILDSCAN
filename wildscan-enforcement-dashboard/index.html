@@ -6,8 +6,8 @@
     <title>WILDSCAN Enforcement Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Google Maps API with provided key -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCWf1Op6jrcUnbjGFRmn3WYW-0VcTNB-Vc&libraries=visualization"></script>
+    <!-- Google Maps API (key from Vite env) -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=%VITE_GOOGLE_MAPS_API_KEY%&libraries=visualization"></script>
     <style>
       body {
         font-family: 'Inter', sans-serif;
@@ -30,6 +30,22 @@
       /* Custom Map Marker Glow */
       .custom-marker {
         cursor: pointer;
+      }
+      .gm-style-iw,
+      .gm-style-iw-c {
+        background: transparent !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+      }
+      .gm-style-iw-d {
+        overflow: hidden !important;
+      }
+      .gm-style-iw-t::after {
+        background: #0f172a !important;
+        box-shadow: 0 10px 24px rgba(2, 6, 23, 0.55) !important;
+      }
+      .gm-ui-hover-effect {
+        filter: invert(1) opacity(0.8);
       }
     </style>
 <script type="importmap">
