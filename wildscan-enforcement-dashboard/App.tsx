@@ -6,11 +6,21 @@ import CrimeMap from './components/CrimeMap';
 import CaseDetails from './components/CaseDetails';
 import FiltersBar from './components/FiltersBar';
 import StatusStrip from './components/StatusStrip';
+import LoginPage from './components/LoginPage';
 import { Detection } from './types';
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "./firebase";
 
+const AUTH_STORAGE_KEY = "wildscan_dashboard_auth";
+
 const App: React.FC = () => {
+  const loginEmail = import.meta.env.VITE_LOGIN_EMAIL ?? "";
+  const loginPassword = import.meta.env.VITE_LOGIN_PASSWORD ?? "";
+  const loginKey = import.meta.env.VITE_LOGIN_KEY ?? "";
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(AUTH_STORAGE_KEY) === "true";
+  });
   const [caseDocs, setCaseDocs] = useState<{ id: string; data: any }[]>([]);
   const [detections, setDetections] = useState<Detection[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,6 +83,7 @@ const App: React.FC = () => {
 
   // Listen to live data from Firestore
   useEffect(() => {
+    if (!isAuthenticated) return () => {};
     let unsubscribe = () => {};
     try {
       if (!db) {
@@ -101,9 +112,10 @@ const App: React.FC = () => {
       setFirestoreError("Firestore initialization failed.");
     }
     return () => unsubscribe();
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) return () => {};
     let unsubscribe = () => {};
     if (!db) return () => {};
 
@@ -139,7 +151,7 @@ const App: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const liveDetections = caseDocs.map((doc) => toDetection(doc, evidenceByCase[doc.id]));
@@ -316,6 +328,24 @@ const App: React.FC = () => {
     setMinConfidence(0);
     setShowHeatmap(false);
   }, [allPriorities]);
+
+  const handleLoginSuccess = useCallback(() => {
+    setIsAuthenticated(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(AUTH_STORAGE_KEY, "true");
+    }
+  }, []);
+
+  if (!isAuthenticated) {
+    return (
+      <LoginPage
+        expectedEmail={loginEmail}
+        expectedPassword={loginPassword}
+        expectedKey={loginKey}
+        onLoginSuccess={handleLoginSuccess}
+      />
+    );
+  }
 
   return (
     <div
