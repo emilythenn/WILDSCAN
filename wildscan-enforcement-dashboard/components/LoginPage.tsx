@@ -64,7 +64,7 @@ const LoginPage: React.FC<LoginPageProps> = ({
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="w-full rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500/70"
-              placeholder="name@agency.gov"
+              placeholder="xxxx@gmail.com"
               required
             />
           </div>
@@ -77,7 +77,7 @@ const LoginPage: React.FC<LoginPageProps> = ({
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 className="w-full rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 pr-16 text-sm text-slate-100 outline-none focus:border-emerald-500/70"
-                placeholder="••••••••"
+                placeholder="Enter your password"
                 required
               />
               <button

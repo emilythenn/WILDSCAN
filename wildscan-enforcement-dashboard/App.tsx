@@ -336,6 +336,13 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const handleLogout = useCallback(() => {
+    setIsAuthenticated(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    }
+  }, []);
+
   if (!isAuthenticated) {
     return (
       <LoginPage
@@ -365,6 +372,7 @@ const App: React.FC = () => {
             isNotificationsOpen={isNotificationsOpen}
             onToggleNotifications={() => setIsNotificationsOpen((prev) => !prev)}
             onNotificationClick={handleNotificationClick}
+            onLogout={handleLogout}
             firestoreStatus={firestoreStatus}
             firestoreError={firestoreError}
           />

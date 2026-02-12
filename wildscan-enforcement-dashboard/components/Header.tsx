@@ -8,6 +8,7 @@ interface HeaderProps {
   isNotificationsOpen: boolean;
   onToggleNotifications: () => void;
   onNotificationClick: (caseId: string) => void;
+  onLogout: () => void;
   firestoreStatus: "connecting" | "connected" | "error" | "offline";
   firestoreError: string | null;
 }
@@ -18,6 +19,7 @@ const Header: React.FC<HeaderProps> = ({
   isNotificationsOpen,
   onToggleNotifications,
   onNotificationClick,
+  onLogout,
   firestoreStatus,
   firestoreError,
 }) => {
@@ -112,6 +114,13 @@ const Header: React.FC<HeaderProps> = ({
             </div>
           )}
         </div>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="rounded-lg border border-rose-500/60 bg-rose-500/10 px-4 py-2 text-[11px] font-mono uppercase tracking-widest text-rose-200 hover:border-rose-400 hover:text-rose-100"
+        >
+          Logout
+        </button>
       </div>
     </header>
   );
