@@ -2,6 +2,7 @@
 export interface Detection {
   id: string;
   animal_type: string;
+  case_name?: string;
   source: string;
   image_url: string;
   lat: number;

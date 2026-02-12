@@ -18,3 +18,19 @@ View your app in AI Studio: https://ai.studio/apps/drive/1Cobr64U6Dn0YlqqGCRbJT4
 2. Set the `VITE_GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Firestore Rules (Suggested for Local Testing)
+
+If you do not see data from the `cases` collection, ensure your Firestore rules allow reads for your current setup.
+For local testing only, you can allow public reads and lock down later:
+
+```rules
+rules_version = '2';
+service cloud.firestore {
+   match /databases/{database}/documents {
+      match /cases/{caseId} {
+         allow read: if true;
+      }
+   }
+}
+```

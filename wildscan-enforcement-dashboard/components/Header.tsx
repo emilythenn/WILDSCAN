@@ -8,6 +8,8 @@ interface HeaderProps {
   isNotificationsOpen: boolean;
   onToggleNotifications: () => void;
   onNotificationClick: (caseId: string) => void;
+  firestoreStatus: "connecting" | "connected" | "error" | "offline";
+  firestoreError: string | null;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -16,7 +18,23 @@ const Header: React.FC<HeaderProps> = ({
   isNotificationsOpen,
   onToggleNotifications,
   onNotificationClick,
+  firestoreStatus,
+  firestoreError,
 }) => {
+  const statusStyles: Record<HeaderProps["firestoreStatus"], string> = {
+    connected: "bg-emerald-500/10 border-emerald-500 text-emerald-300",
+    connecting: "bg-amber-500/10 border-amber-500 text-amber-300",
+    error: "bg-red-500/10 border-red-500 text-red-300",
+    offline: "bg-slate-500/10 border-slate-500 text-slate-300",
+  };
+
+  const statusLabel: Record<HeaderProps["firestoreStatus"], string> = {
+    connected: "Live",
+    connecting: "Connecting",
+    error: "Error",
+    offline: "Offline",
+  };
+
   return (
     <header className="h-16 bg-slate-950 border-b border-emerald-500/20 flex items-center justify-between px-6 z-20 shadow-lg">
       <div className="flex items-center gap-4">
@@ -46,6 +64,12 @@ const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-6">
+        <span
+          className={`px-2 py-1 rounded border text-[10px] font-mono uppercase tracking-widest ${statusStyles[firestoreStatus]}`}
+          title={firestoreError || `Firestore status: ${statusLabel[firestoreStatus]}`}
+        >
+          {statusLabel[firestoreStatus]}
+        </span>
         <div className="relative">
           <button
             type="button"

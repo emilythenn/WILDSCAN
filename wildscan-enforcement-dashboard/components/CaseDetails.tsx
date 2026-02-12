@@ -16,6 +16,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
   const [reportContent, setReportContent] = useState<{ text: string; html: string; filename: string } | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isImageFit, setIsImageFit] = useState(true);
 
   const formatTimestamp = (timestamp: Detection["timestamp"]) => {
     if (!timestamp) return "N/A";
@@ -490,9 +491,22 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div className="space-y-2">
-          <label className="text-[10px] uppercase font-mono text-slate-500 tracking-widest">Visual Evidence</label>
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] uppercase font-mono text-slate-500 tracking-widest">Visual Evidence</label>
+            <button
+              type="button"
+              onClick={() => setIsImageFit((prev) => !prev)}
+              className="text-[10px] uppercase font-mono tracking-widest text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              {isImageFit ? "Fill" : "Fit"}
+            </button>
+          </div>
           <div className="aspect-video w-full rounded-xl overflow-hidden border border-slate-700 bg-slate-800 relative group cursor-crosshair">
-            <img src={detection.image_url} alt="Evidence" className="w-full h-full object-cover grayscale-[0.5] group-hover:grayscale-0 transition-all duration-700" />
+            <img
+              src={detection.image_url}
+              alt="Evidence"
+              className={`w-full h-full ${isImageFit ? "object-contain" : "object-cover"} grayscale-[0.5] group-hover:grayscale-0 transition-all duration-700`}
+            />
             <div className="absolute inset-0 bg-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <div className="absolute top-4 left-4 border-l-2 border-t-2 border-emerald-500 w-8 h-8"></div>
             <div className="absolute top-4 right-4 border-r-2 border-t-2 border-emerald-500 w-8 h-8"></div>
@@ -527,14 +541,13 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection }) => {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-[10px] uppercase font-mono text-slate-500 tracking-widest">Gemini AI Verification Intel</label>
-            <a href="#" className="text-emerald-400 hover:text-emerald-300 text-[10px] flex items-center gap-1 transition-colors">
-              <LinkIcon size={10} /> View Post
-            </a>
           </div>
           <div className="space-y-2 text-xs text-slate-400 bg-slate-950/80 p-4 rounded-lg border border-slate-800 group">
             <div className="flex justify-between border-b border-slate-800/50 pb-2">
               <span className="text-slate-500">Username:</span>
-              <span className="text-emerald-400 font-mono">@{detection.user_handle || 'EXOTIC_X_2026'}</span>
+              <span className="text-emerald-400 font-mono">
+                {detection.user_handle ? `@${detection.user_handle}` : ""}
+              </span>
             </div>
             <div className="flex justify-between border-b border-slate-800/50 pb-2">
               <span className="text-slate-500">Coordinates:</span>

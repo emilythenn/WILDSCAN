@@ -7,12 +7,12 @@ import CaseDetails from './components/CaseDetails';
 import FiltersBar from './components/FiltersBar';
 import StatusStrip from './components/StatusStrip';
 import { Detection } from './types';
-import { mockDetections } from './constants';
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "./firebase";
 
 const App: React.FC = () => {
-  const [detections, setDetections] = useState<Detection[]>(mockDetections);
+  const [caseDocs, setCaseDocs] = useState<{ id: string; data: any }[]>([]);
+  const [detections, setDetections] = useState<Detection[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDetection, setSelectedDetection] = useState<Detection | null>(null);
   const [severityFilter, setSeverityFilter] = useState<Detection["priority"][]>([
@@ -27,6 +27,52 @@ const App: React.FC = () => {
   const knownIdsRef = useRef<Set<string>>(new Set());
   const hasRequestedNotifications = useRef(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [firestoreStatus, setFirestoreStatus] = useState<"connecting" | "connected" | "error" | "offline">("connecting");
+  const [firestoreError, setFirestoreError] = useState<string | null>(null);
+  const [evidenceByCase, setEvidenceByCase] = useState<Record<string, { fileUrl: string; platformSource?: string; aiSummary?: string }>>({});
+
+  const normalizePriority = (value?: string): Detection["priority"] => {
+    const normalized = value?.toLowerCase();
+    if (normalized === "high") return "High";
+    if (normalized === "medium") return "Medium";
+    if (normalized === "low") return "Low";
+    return "Low";
+  };
+
+  const toDetection = (doc: { id: string; data: any }, evidence?: { fileUrl: string; platformSource?: string; aiSummary?: string }): Detection => {
+    const data = doc.data ?? {};
+    const location = data.location ?? {};
+    const createdAt = data.createdAt ?? data.timestamp;
+    let timestamp = createdAt;
+    if (timestamp && typeof timestamp.toDate === "function") {
+      timestamp = timestamp.toDate().toISOString();
+    } else if (!timestamp) {
+      timestamp = new Date().toISOString();
+    }
+
+    const confidence = typeof data.confidenceScore === "number"
+      ? data.confidenceScore
+      : typeof data.confidence === "number"
+        ? data.confidence
+        : 0;
+
+    return {
+      id: doc.id,
+      animal_type: data.speciesDetected || data.animal_type || data.caseName || "",
+      case_name: data.caseName || data.case_name || "",
+      source: data.source || evidence?.platformSource || "",
+      image_url: evidence?.fileUrl || data.image_url || data.imageUrl || "",
+      lat: typeof location.lat === "number" ? location.lat : typeof data.lat === "number" ? data.lat : 0,
+      lng: typeof location.lng === "number" ? location.lng : typeof data.lng === "number" ? data.lng : 0,
+      timestamp,
+      priority: normalizePriority(data.priority),
+      confidence,
+      location_name: location.state || data.location_name || "",
+      user_handle: data.user_handle,
+      post_url: data.post_url,
+      description: data.description || evidence?.aiSummary || data.status || "",
+    };
+  };
 
   // Listen to live data from Firestore
   useEffect(() => {
@@ -34,31 +80,74 @@ const App: React.FC = () => {
     try {
       if (!db) {
         console.warn("Firestore not available. Falling back to mock data.");
+        setFirestoreStatus("offline");
+        setFirestoreError("Firestore not available in this environment.");
         return () => {};
       }
-      const q = query(collection(db, "detected_posts"), orderBy("timestamp", "desc"));
+      setFirestoreStatus("connecting");
+      const q = query(collection(db, "cases"), orderBy("createdAt", "desc"));
       unsubscribe = onSnapshot(q, (snapshot: any) => {
         if (!snapshot.empty) {
-          const liveDetections = snapshot.docs.map((doc: any) => {
-            const data = doc.data();
-            let timestamp = data.timestamp;
-            if (timestamp && typeof timestamp.toDate === "function") {
-              timestamp = timestamp.toDate().toISOString();
-            } else if (!timestamp) {
-              timestamp = new Date().toISOString();
-            }
-            return { id: doc.id, ...data, timestamp } as Detection;
-          });
-          setDetections(liveDetections);
+          const nextDocs = snapshot.docs.map((doc: any) => ({ id: doc.id, data: doc.data() }));
+          setCaseDocs(nextDocs);
         }
+        setFirestoreStatus("connected");
+        setFirestoreError(null);
       }, (error) => {
         console.error("Firestore listening error: ", error);
+        setFirestoreStatus("error");
+        setFirestoreError(error?.message || "Firestore connection failed.");
       });
     } catch (err) {
       console.warn("Firestore service initialization failed. Ensure API key and permissions are correct.", err);
+      setFirestoreStatus("error");
+      setFirestoreError("Firestore initialization failed.");
     }
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    let unsubscribe = () => {};
+    if (!db) return () => {};
+
+    const q = query(collection(db, "evidence"), orderBy("uploadedAt", "desc"));
+    unsubscribe = onSnapshot(q, (snapshot: any) => {
+      if (snapshot.empty) return;
+
+      const nextMap: Record<string, { fileUrl: string; uploadedAt?: string; platformSource?: string; aiSummary?: string }> = {};
+      snapshot.docs.forEach((doc: any) => {
+        const data = doc.data();
+        const caseId = data.caseId as string | undefined;
+        const fileUrl = data.fileUrl as string | undefined;
+        const platformSource = data.platformSource as string | undefined;
+        const aiSummary = data.aiSummary as string | undefined;
+        if (!caseId || !fileUrl) return;
+        let uploadedAt = data.uploadedAt;
+        if (uploadedAt && typeof uploadedAt.toDate === "function") {
+          uploadedAt = uploadedAt.toDate().toISOString();
+        }
+
+        if (!nextMap[caseId]) {
+          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary };
+          return;
+        }
+
+        const current = nextMap[caseId];
+        if (!current.uploadedAt || (uploadedAt && uploadedAt > current.uploadedAt)) {
+          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary };
+        }
+      });
+
+      setEvidenceByCase(nextMap);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const liveDetections = caseDocs.map((doc) => toDetection(doc, evidenceByCase[doc.id]));
+    setDetections(liveDetections);
+  }, [caseDocs, evidenceByCase]);
 
   const availableSources = useMemo(() => {
     return Array.from(new Set(detections.map((d) => d.source))).sort();
@@ -68,6 +157,7 @@ const App: React.FC = () => {
   const filteredDetections = useMemo(() => {
     return detections.filter(d => 
       (d.animal_type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        d.case_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.location_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.source?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.id?.toLowerCase().includes(searchQuery.toLowerCase())) &&
@@ -241,6 +331,8 @@ const App: React.FC = () => {
             isNotificationsOpen={isNotificationsOpen}
             onToggleNotifications={() => setIsNotificationsOpen((prev) => !prev)}
             onNotificationClick={handleNotificationClick}
+            firestoreStatus={firestoreStatus}
+            firestoreError={firestoreError}
           />
 
         <FiltersBar
