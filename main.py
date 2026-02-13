@@ -4,7 +4,6 @@ import requests
 from typing import Any, Dict
 
 from dotenv import load_dotenv
-from google.api_core.exceptions import NotFound
 from google.cloud import firestore
 import google.generativeai as genai
 
@@ -26,14 +25,27 @@ DEFAULT_LOCATION = {
     "state": "Unknown"
 }
 
-def is_unprocessed(ev: dict) -> bool:
+# ---------- Helpers: clean naming ----------
+def pick_species_name(gem: dict, rule: dict) -> str:
+    # Biological animal name
+    return (gem.get("suspectedSpecies") or rule.get("species") or "Unknown").strip() if isinstance(
+        (gem.get("suspectedSpecies") or rule.get("species") or "Unknown"), str
+    ) else "Unknown"
+
+def pick_illegal_product(gem: dict, rule: dict) -> str:
     """
-    Treat as unprocessed if:
-    - scannerVersion missing OR
-    - caseId missing OR
-    - aiScannedAt missing (your requested timestamp)
+    What is being trafficked / extracted (contraband).
+    Prefer Gemini 'illegalProduct' if your prompt returns it.
+    Fallback: rule's 'speciesDetected' if your rules use that naming.
+    Otherwise Unknown.
     """
-    return (not ev.get("scannerVersion")) or (not ev.get("caseId")) or (not ev.get("aiScannedAt"))
+    val = gem.get("illegalProduct") or rule.get("illegalProduct") or rule.get("speciesDetected")
+    if isinstance(val, str) and val.strip():
+        return val.strip()
+    return "Unknown"
+
+def is_unprocessed(ev):
+    return True
 
 def download_image_bytes(url: str) -> bytes:
     r = requests.get(url, timeout=30)
@@ -41,7 +53,6 @@ def download_image_bytes(url: str) -> bytes:
     return r.content
 
 def init_clients():
-    # Support both naming styles: GEMINI_API_KEY (scanner) or VITE_GEMINI_API_KEY (front-end env)
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("VITE_GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("Missing GEMINI_API_KEY (or VITE_GEMINI_API_KEY) in .env")
@@ -61,8 +72,6 @@ def gemini_analyze_image(model, image_bytes: bytes) -> Dict[str, Any]:
     )
 
     text = (resp.text or "").strip()
-
-    # Try to extract JSON if extra text appears
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1:
@@ -99,17 +108,26 @@ def create_case(db, case_id: str, gem: dict, rule: dict, platform: str):
     now = firestore.SERVER_TIMESTAMP
     location = _guess_location_from_gem(gem)
 
+    species_name = pick_species_name(gem, rule)
+    illegal_product = pick_illegal_product(gem, rule)
+
     payload = {
-        # Existing dashboard-friendly fields
+        # Main fields for dashboard
         "confidenceScore": float(gem.get("confidence", 0.5)),
         "createdAt": now,
         "updatedAt": now,
         "statusDate": now,
         "priority": rule["priority"],  # LOW/MEDIUM/HIGH
         "source": "AI_SCANNER",
-        "SpeciesDetected": gem.get("suspectedSpecies") or rule.get("species") or "Unknown",
         "Status": "Pending",
         "location": location,
+
+        # ✅ NEW CLEAR NAMES
+        "detectedSpeciesName": species_name,           # animal name
+        "detectedIllegalProduct": illegal_product,     # contraband / product type
+
+        # ✅ Backward compatibility (keep your old key so UI won't break)
+        "SpeciesDetected": species_name,
 
         # Extra helpful fields
         "riskScore": int(rule["riskScore"]),
@@ -118,7 +136,7 @@ def create_case(db, case_id: str, gem: dict, rule: dict, platform: str):
         "codeWords": gem.get("codeWords", rule.get("codeWords", [])),
         "reasons": gem.get("reasons", rule.get("reasons", [])),
 
-        # Requested: AI scanned timestamp in CASE too
+        # Scanning state
         "aiScannedAt": now,
         "aiProcessed": True,
 
@@ -132,12 +150,11 @@ def create_case(db, case_id: str, gem: dict, rule: dict, platform: str):
     return payload
 
 def update_case(db, case_id: str, gem: dict, rule: dict, platform: str):
-    """
-    Merge-update the case even if it already exists (so dashboard reflects changes).
-    Adds aiScannedAt + updatedAt each time scanning happens.
-    """
     now = firestore.SERVER_TIMESTAMP
     location = _guess_location_from_gem(gem)
+
+    species_name = pick_species_name(gem, rule)
+    illegal_product = pick_illegal_product(gem, rule)
 
     updates = {
         "confidenceScore": float(gem.get("confidence", 0.5)),
@@ -148,32 +165,31 @@ def update_case(db, case_id: str, gem: dict, rule: dict, platform: str):
         "riskScore": int(rule["riskScore"]),
         "platformSource": platform or "Unknown",
 
-        "SpeciesDetected": gem.get("suspectedSpecies") or rule.get("species") or "Unknown",
+        # ✅ NEW CLEAR NAMES
+        "detectedSpeciesName": species_name,
+        "detectedIllegalProduct": illegal_product,
+
+        # ✅ Backward compatibility
+        "SpeciesDetected": species_name,
+
         "reasonSummary": gem.get("summary") or "Suspicious content detected.",
         "codeWords": gem.get("codeWords", rule.get("codeWords", [])),
         "reasons": gem.get("reasons", rule.get("reasons", [])),
 
-        # Requested: AI scanned timestamp in CASE too
         "aiScannedAt": now,
         "aiProcessed": True,
 
-        # Traceability
         "aiModelVersion": AI_MODEL_VERSION,
         "scannerVersion": SCANNER_VERSION,
         "processingNode": PROCESSING_NODE,
 
         "location": location,
-        "source": "AI_SCANNER",  # keep consistent
+        "source": "AI_SCANNER",
     }
 
     db.collection(CASES_COLLECTION).document(case_id).set(updates, merge=True)
 
 def update_evidence(db, evidence_id: str, case_id: str, gem: dict):
-    """
-    Updates evidence with AI fields + link to case.
-    Adds aiScannedAt timestamp (requested) + updatedAt.
-    Uses set(merge=True) to avoid failures if doc missing and to preserve other fields.
-    """
     now = firestore.SERVER_TIMESTAMP
     updates = {
         "caseId": case_id,
@@ -182,15 +198,10 @@ def update_evidence(db, evidence_id: str, case_id: str, gem: dict):
         "aiModelVersion": AI_MODEL_VERSION,
         "scannerVersion": SCANNER_VERSION,
         "processingNode": PROCESSING_NODE,
-
-        # Requested timestamp + standard update timestamp
         "aiScannedAt": now,
         "updatedAt": now,
     }
 
-    # Use merge=True so it:
-    # - creates the doc if it doesn't exist
-    # - doesn't overwrite other fields (fileUrl, uploadedAt, etc.)
     db.collection(EVIDENCE_COLLECTION).document(evidence_id).set(updates, merge=True)
 
 def process_evidence_doc(db, model, ev_doc):
@@ -231,22 +242,21 @@ def process_evidence_doc(db, model, ev_doc):
         create_case(db, case_id, gem, rule, platform)
         print(f"[OK] created case {case_id}")
 
-    # 3b) ALWAYS update case (so dashboard reflects AI scan + timestamps)
+    # 3b) Always update case
     update_case(db, case_id, gem, rule, platform)
     print(f"[OK] updated case {case_id}")
 
-    # 4) Update evidence with AI + link to case + aiScannedAt
+    # 4) Update evidence
     update_evidence(db, evidence_id, case_id, gem)
     print(f"[OK] updated evidence {evidence_id} -> caseId {case_id}")
 
 def main():
     db, model = init_clients()
 
-    # Read latest evidence docs
     docs = (
         db.collection(EVIDENCE_COLLECTION)
         .order_by("uploadedAt", direction=firestore.Query.DESCENDING)
-        .limit(50)  # bump a bit so you catch more
+        .limit(50)
         .stream()
     )
 
