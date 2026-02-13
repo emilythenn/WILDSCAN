@@ -1,6 +1,49 @@
 
 import { Detection } from './types';
 
+// Predefined Sources (Fixed - won't change on case updates)
+export const PREDEFINED_SOURCES = [
+  "Facebook Marketplace",
+  "Instagram",
+  "Telegram Channel",
+  "WhatsApp Groups",
+  "TikTok",
+  "Twitter/X",
+  "YouTube",
+  "WeChat",
+  "Mudah.my",
+  "Shopee",
+  "Lazada",
+  "Dark Web Forum",
+  "Unknown",
+  "Others"
+];
+
+// Predefined Locations (Fixed - won't change on case updates)
+export const PREDEFINED_LOCATIONS = [
+  "Kuala Lumpur",
+  "Selangor",
+  "Johor Bahru",
+  "Penang",
+  "Pahang",
+  "Kedah",
+  "Perak",
+  "Terengganu",
+  "Kelantan",
+  "Kota Bharu",
+  "Ipoh",
+  "Shah Alam",
+  "Subang Jaya",
+  "Petaling Jaya",
+  "Cyberjaya",
+  "Putrajaya",
+  "Labuan",
+  "Sabah",
+  "Sarawak",
+  "Online/Unknown",
+  "Others"
+];
+
 export const mockDetections: Detection[] = [
   {
     id: 'WS-2026-001',

@@ -306,6 +306,44 @@ const App: React.FC = () => {
 
   // Filter detections based on search query and filters
   const filteredDetections = useMemo(() => {
+    const matchesSourceFilter = (caseSource: string, filterSource: string) => {
+      if (filterSource === "All") return true;
+      if (!caseSource) return false;
+      
+      const caseSourceLower = caseSource.toLowerCase();
+      const filterSourceLower = filterSource.toLowerCase();
+      
+      // Exact match
+      if (caseSourceLower === filterSourceLower) return true;
+      
+      // Keyword match - check if filter keyword is contained in case source
+      if (caseSourceLower.includes(filterSourceLower)) return true;
+      
+      // Reverse - check if case source keyword is in filter (for custom entries)
+      if (filterSourceLower.includes(caseSourceLower)) return true;
+      
+      return false;
+    };
+
+    const matchesLocationFilter = (caseLocation: string, filterLocation: string) => {
+      if (filterLocation === "All") return true;
+      if (!caseLocation) return false;
+      
+      const caseLocationLower = caseLocation.toLowerCase();
+      const filterLocationLower = filterLocation.toLowerCase();
+      
+      // Exact match
+      if (caseLocationLower === filterLocationLower) return true;
+      
+      // Keyword match - check if filter keyword is contained in case location
+      if (caseLocationLower.includes(filterLocationLower)) return true;
+      
+      // Reverse - check if case location keyword is in filter (for custom entries)
+      if (filterLocationLower.includes(caseLocationLower)) return true;
+      
+      return false;
+    };
+
     return detections.filter(d => 
       (d.animal_type?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.case_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -313,8 +351,8 @@ const App: React.FC = () => {
         d.source?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         d.id?.toLowerCase().includes(searchQuery.toLowerCase())) &&
       severityFilter.includes(d.priority) &&
-      (sourceFilter === "All" || d.source === sourceFilter) &&
-      (locationFilter === "All" || d.location_name === locationFilter) &&
+      matchesSourceFilter(d.source, sourceFilter) &&
+      matchesLocationFilter(d.location_name, locationFilter) &&
       d.confidence >= minConfidence
     );
   }, [detections, minConfidence, searchQuery, severityFilter, sourceFilter, locationFilter]);

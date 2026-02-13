@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { Flame, Filter, SlidersHorizontal } from "lucide-react";
 import { Detection } from "../types";
+import { PREDEFINED_SOURCES, PREDEFINED_LOCATIONS } from "../constants";
 
 interface FiltersBarProps {
   severityFilter: Detection["priority"][];
@@ -28,8 +29,6 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   sourceFilter,
   locationFilter,
   minConfidence,
-  availableSources,
-  availableLocations,
   onToggleSeverity,
   onSelectAllSeverities,
   onSourceChange,
@@ -37,9 +36,48 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   onMinConfidenceChange,
   onReset,
 }) => {
+  const [showSourceInput, setShowSourceInput] = useState(false);
+  const [customSource, setCustomSource] = useState("");
+  const [showLocationInput, setShowLocationInput] = useState(false);
+  const [customLocation, setCustomLocation] = useState("");
+
   const isAllSelected = (Object.keys(severityStyles) as Detection["priority"][]).every((level) =>
     severityFilter.includes(level)
   );
+
+  const handleSourceChange = (value: string) => {
+    if (value === "Others") {
+      setShowSourceInput(true);
+    } else {
+      setShowSourceInput(false);
+      setCustomSource("");
+      onSourceChange(value);
+    }
+  };
+
+  const handleCustomSourceSubmit = () => {
+    if (customSource.trim()) {
+      onSourceChange(customSource.trim());
+      setShowSourceInput(false);
+    }
+  };
+
+  const handleLocationChange = (value: string) => {
+    if (value === "Others") {
+      setShowLocationInput(true);
+    } else {
+      setShowLocationInput(false);
+      setCustomLocation("");
+      onLocationChange(value);
+    }
+  };
+
+  const handleCustomLocationSubmit = () => {
+    if (customLocation.trim()) {
+      onLocationChange(customLocation.trim());
+      setShowLocationInput(false);
+    }
+  };
 
   return (
     <div className="bg-slate-950/80 border-b border-emerald-500/20 px-6 py-3 flex flex-wrap items-center gap-3">
@@ -79,34 +117,78 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
 
       <div className="flex items-center gap-2">
         <span className="text-[10px] text-slate-500 font-mono uppercase">Source</span>
-        <select
-          value={sourceFilter}
-          onChange={(e) => onSourceChange(e.target.value)}
-          className="bg-slate-900 border border-slate-800 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/50"
-        >
-          <option value="All">All</option>
-          {availableSources.map((source) => (
-            <option key={source} value={source}>
-              {source}
-            </option>
-          ))}
-        </select>
+        {!showSourceInput ? (
+          <select
+            value={sourceFilter}
+            onChange={(e) => handleSourceChange(e.target.value)}
+            className="bg-slate-900 border border-slate-800 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/50"
+          >
+            <option value="All">All</option>
+            {PREDEFINED_SOURCES.map((source) => (
+              <option key={source} value={source}>
+                {source}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              value={customSource}
+              onChange={(e) => setCustomSource(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === "Enter") handleCustomSourceSubmit();
+              }}
+              placeholder="Enter source..."
+              className="bg-slate-800 border border-emerald-500/50 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/80"
+              autoFocus
+            />
+            <button
+              onClick={handleCustomSourceSubmit}
+              className="px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30 text-xs font-mono"
+            >
+              +
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
         <span className="text-[10px] text-slate-500 font-mono uppercase">Location</span>
-        <select
-          value={locationFilter}
-          onChange={(e) => onLocationChange(e.target.value)}
-          className="bg-slate-900 border border-slate-800 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/50"
-        >
-          <option value="All">All</option>
-          {availableLocations.map((location) => (
-            <option key={location} value={location}>
-              {location}
-            </option>
-          ))}
-        </select>
+        {!showLocationInput ? (
+          <select
+            value={locationFilter}
+            onChange={(e) => handleLocationChange(e.target.value)}
+            className="bg-slate-900 border border-slate-800 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/50"
+          >
+            <option value="All">All</option>
+            {PREDEFINED_LOCATIONS.map((location) => (
+              <option key={location} value={location}>
+                {location}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="flex items-center gap-1">
+            <input
+              type="text"
+              value={customLocation}
+              onChange={(e) => setCustomLocation(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === "Enter") handleCustomLocationSubmit();
+              }}
+              placeholder="Enter location..."
+              className="bg-slate-800 border border-emerald-500/50 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/80"
+              autoFocus
+            />
+            <button
+              onClick={handleCustomLocationSubmit}
+              className="px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30 text-xs font-mono"
+            >
+              +
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
