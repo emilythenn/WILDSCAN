@@ -386,17 +386,8 @@ const App: React.FC = () => {
   }, [handleOpenNotification, markCasesRead]);
 
   const handleToggleNotifications = useCallback(() => {
-    setIsNotificationsOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        const unreadCaseIds = detections
-          .map((d) => d.id)
-          .filter((caseId) => !readStateByCase[caseId]);
-        markCasesRead(unreadCaseIds);
-      }
-      return next;
-    });
-  }, [detections, markCasesRead, readStateByCase]);
+    setIsNotificationsOpen((prev) => !prev);
+  }, []);
 
   useEffect(() => {
     if (detections.length === 0) return;

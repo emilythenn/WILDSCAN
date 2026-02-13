@@ -119,15 +119,24 @@ const Header: React.FC<HeaderProps> = ({
                     <button
                       key={notice.id}
                       onClick={() => onNotificationClick(notice.caseId)}
-                      className={`w-full text-left px-4 py-3 border-b border-slate-800 hover:bg-slate-900/70 transition-colors ${notice.isRead ? "opacity-70" : ""}`}
+                      className={`w-full text-left px-4 py-3 border-b border-slate-800 hover:bg-slate-900/70 transition-colors relative ${notice.isRead ? "opacity-70" : ""}`}
                     >
-                      <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono">
-                        {notice.title}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono">
+                            {notice.title}
+                          </div>
+                          <div className="mt-1 text-[10px] text-slate-400 font-mono uppercase tracking-widest">
+                            {notice.location}
+                          </div>
+                          <div className="mt-2 text-[10px] text-slate-500 font-mono">{notice.time}</div>
+                        </div>
+                        {!notice.isRead && (
+                          <div className="flex-shrink-0 pt-1">
+                            <span className="w-2.5 h-2.5 bg-red-500 rounded-full block animate-pulse"></span>
+                          </div>
+                        )}
                       </div>
-                      <div className="mt-1 text-[10px] text-slate-400 font-mono uppercase tracking-widest">
-                        {notice.location}
-                      </div>
-                      <div className="mt-2 text-[10px] text-slate-500 font-mono">{notice.time}</div>
                     </button>
                   ))
                 )}
