@@ -51,6 +51,12 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
   const getResponseText = async (response: unknown) => {
     if (typeof response === "string") return response;
     if (response && typeof response === "object") {
+      const maybeCandidates = (response as { candidates?: unknown }).candidates;
+      if (Array.isArray(maybeCandidates) && maybeCandidates.length > 0) {
+        const first = maybeCandidates[0] as { content?: { parts?: Array<{ text?: string }> } };
+        const partText = first?.content?.parts?.[0]?.text;
+        if (typeof partText === "string") return partText;
+      }
       const maybeText = (response as { text?: unknown }).text;
       if (typeof maybeText === "string") return maybeText;
       if (typeof maybeText === "function") {
@@ -64,14 +70,36 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
     return null;
   };
 
-  const resolveAiSummary = () => {
+  const buildLocalRiskSummary = (target: Detection) => {
+    const confidencePercent = Math.round(target.confidence * 100);
+    const trustScore = target.trust_score ?? 0;
+    const priorityScore = target.priority === "High" ? 2 : target.priority === "Medium" ? 1 : 0;
+    const confidenceScore = target.confidence >= 0.85 ? 2 : target.confidence >= 0.7 ? 1 : 0;
+    const trustScoreWeight = trustScore >= 3 ? 1 : 0;
+    const totalScore = priorityScore + confidenceScore + trustScoreWeight;
+
+    const riskLevel: "High" | "Medium" | "Low" = totalScore >= 4 ? "High" : totalScore >= 2 ? "Medium" : "Low";
+    const signals = [
+      `Priority ${target.priority}`,
+      `AI confidence ${confidencePercent}%`,
+      target.source ? `Source ${target.source}` : null,
+      target.location_name ? `Location ${target.location_name}` : null,
+      trustScore ? `Trust score ${trustScore}` : null,
+    ].filter(Boolean) as string[];
+
+    const summary = `Risk level: ${riskLevel}. Key signals: ${signals.join(", ")}.`;
+
+    return { riskLevel, signals, summary };
+  };
+
+  const resolveAiSummary = (fallbackText: string) => {
     if (aiAnalysis) return aiAnalysis;
     if (isAnalyzing) return "Gemini analysis pending. Please retry in a moment.";
-    return "Gemini unavailable. Check API key, billing, and network access.";
+    return fallbackText;
   };
 
   const requestGeminiViaRest = async (apiKey: string, prompt: string) => {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -94,53 +122,65 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
     return await getResponseText(data);
   };
 
-  // Fix: Integrate Gemini AI to provide real-time verification and risk assessment
   useEffect(() => {
-    if (detection) {
-      setAiAnalysis(null);
-      setIsAnalyzing(true);
-      
-      const runAIAnalysis = async () => {
+    if (!detection) return;
+    let cancelled = false;
+    const localRisk = buildLocalRiskSummary(detection);
+
+    setAiAnalysis(null);
+    setIsAnalyzing(true);
+
+    const runAIAnalysis = async () => {
+      try {
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+        if (!apiKey) {
+          throw new Error("Missing VITE_GEMINI_API_KEY");
+        }
+        const prompt = `Analyze this wildlife trade detection for enforcement officers.
+Species: ${detection.animal_type}
+Source Platform: ${detection.source}
+Description: ${detection.description || "N/A"}
+Location: ${detection.location_name}
+
+Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief legality or conservation concern, and recommended next-step action.`;
+
+        let responseText: string | null = null;
         try {
-          const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-          if (!apiKey) {
-            throw new Error("Missing VITE_GEMINI_API_KEY");
-          }
-          const prompt = `Analyze this wildlife trade detection for enforcement officers.
-            Species: ${detection.animal_type}
-            Source Platform: ${detection.source}
-            User Provided Description: ${detection.description || "N/A"}
-            Location: ${detection.location_name}
-            
-            Provide a professional 2-sentence risk assessment regarding the legality and conservation status.`;
+          const ai = new GoogleGenAI({ apiKey });
+          const response = await ai.models.generateContent({
+            model: "gemini-1.5-flash-latest",
+            contents: prompt,
+          });
+          responseText = await getResponseText(response);
+        } catch (sdkError) {
+          responseText = await requestGeminiViaRest(apiKey, prompt);
+        }
 
-          let responseText: string | null = null;
-          try {
-            const ai = new GoogleGenAI({ apiKey });
-            const response = await ai.models.generateContent({
-              model: "gemini-1.5-flash",
-              contents: prompt,
-            });
-            responseText = await getResponseText(response);
-          } catch (sdkError) {
-            responseText = await requestGeminiViaRest(apiKey, prompt);
-          }
+        const cleaned = responseText?.trim();
+        if (!cleaned) {
+          throw new Error("Empty Gemini response");
+        }
 
-          if (!responseText) {
-            throw new Error("Empty Gemini response");
-          }
-
-          setAiAnalysis(responseText);
-        } catch (err) {
-          console.error("Gemini analysis failed:", err);
-          setAiAnalysis("AI verification offline. Detection flagged based on metadata matching illegal trade patterns.");
-        } finally {
+        if (!cancelled) {
+          setAiAnalysis(cleaned);
+        }
+      } catch (err) {
+        console.error("Gemini analysis failed:", err);
+        if (!cancelled) {
+          setAiAnalysis(`${localRisk.summary} Gemini verification offline; rely on metadata screening.`);
+        }
+      } finally {
+        if (!cancelled) {
           setIsAnalyzing(false);
         }
-      };
+      }
+    };
 
-      runAIAnalysis();
-    }
+    runAIAnalysis();
+
+    return () => {
+      cancelled = true;
+    };
   }, [detection]);
 
   useEffect(() => {
@@ -229,9 +269,11 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
     Medium: "bg-amber-500/10 border-amber-500 text-amber-400",
     Low: "bg-emerald-500/10 border-emerald-500 text-emerald-500",
   };
+  const localRisk = buildLocalRiskSummary(detection);
 
   const buildReportText = () => {
-    const aiSummary = resolveAiSummary();
+    const localRisk = buildLocalRiskSummary(detection);
+    const aiSummary = resolveAiSummary(localRisk.summary);
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
     const reportLines = [
       "WILDSCAN Evidence Report",
@@ -270,6 +312,9 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
       "2) Verification and risk assessment completed.",
       "3) Case packaged for enforcement review and archival.",
       "",
+      "Local Risk Summary:",
+      localRisk.summary,
+      "",
       "Gemini Risk Assessment:",
       aiSummary,
     ];
@@ -278,7 +323,8 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
   };
 
   const buildReportHtml = () => {
-    const aiSummary = resolveAiSummary();
+    const localRisk = buildLocalRiskSummary(detection);
+    const aiSummary = resolveAiSummary(localRisk.summary);
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
     return `<!DOCTYPE html>
 <html>
@@ -373,6 +419,11 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
   </div>
 
   <div class="section">
+    <h2>Local Risk Summary</h2>
+    <div class="box">${localRisk.summary}</div>
+  </div>
+
+  <div class="section">
     <h2>Gemini Risk Assessment</h2>
     <div class="box">${aiSummary}</div>
   </div>
@@ -404,7 +455,8 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
     const margin = 40;
     let y = 72;
 
-    const aiSummary = resolveAiSummary();
+    const localRisk = buildLocalRiskSummary(detection);
+    const aiSummary = resolveAiSummary(localRisk.summary);
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
 
     const ensureSpace = (height: number) => {
@@ -545,6 +597,9 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
     addParagraph("2) Verification and risk assessment completed.");
     addParagraph("3) Case packaged for enforcement review and archival.");
 
+    addSectionTitle("Local Risk Summary");
+    addParagraph(localRisk.summary, 10);
+
     addSectionTitle("Gemini Risk Assessment");
     addParagraph(aiSummary, 10);
 
@@ -676,11 +731,17 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
             </button>
           </div>
           <div className="aspect-video w-full rounded-xl overflow-hidden border border-slate-700 bg-slate-800 relative group cursor-crosshair">
-            <img
-              src={detection.image_url}
-              alt="Evidence"
-              className={`w-full h-full ${isImageFit ? "object-contain" : "object-cover"} grayscale-[0.5] group-hover:grayscale-0 transition-all duration-700`}
-            />
+            {detection.image_url ? (
+              <img
+                src={detection.image_url}
+                alt="Evidence"
+                className={`w-full h-full ${isImageFit ? "object-contain" : "object-cover"} grayscale-[0.5] group-hover:grayscale-0 transition-all duration-700`}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 font-mono">
+                Evidence image unavailable
+              </div>
+            )}
             <div className="absolute inset-0 bg-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <div className="absolute top-4 left-4 border-l-2 border-t-2 border-emerald-500 w-8 h-8"></div>
             <div className="absolute top-4 right-4 border-r-2 border-t-2 border-emerald-500 w-8 h-8"></div>
@@ -753,6 +814,12 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
               <span className="text-slate-500">Coordinates:</span>
               <span className="text-slate-300 font-mono">{detection.lat.toFixed(6)}, {detection.lng.toFixed(6)}</span>
             </div>
+              <div className="flex justify-between border-b border-slate-800/50 pb-2">
+                <span className="text-slate-500">Risk Level:</span>
+                <span className={`font-mono ${localRisk.riskLevel === "High" ? "text-red-400" : localRisk.riskLevel === "Medium" ? "text-amber-400" : "text-emerald-400"}`}>
+                  {localRisk.riskLevel}
+                </span>
+              </div>
             <div className="flex flex-col gap-1 border-b border-slate-800/50 pb-2">
               <div className="flex justify-between">
                 <span className="text-slate-500">Evidence Hash:</span>
@@ -775,7 +842,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
                     <span>Processing live satellite and marketplace data via Gemini...</span>
                   </div>
                 ) : (
-                  <p>"{aiAnalysis || detection.description || `Automated scanning detected non-authorized keywords in metadata.`}"</p>
+                    <p>"{resolveAiSummary(localRisk.summary)}"</p>
                 )}
               </div>
             </div>

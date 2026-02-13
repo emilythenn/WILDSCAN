@@ -31,11 +31,17 @@ const AlertFeed: React.FC<AlertFeedProps> = ({ detections, onSelect, selectedId 
 
           <div className="flex gap-3 h-full">
             <div className="w-20 h-full rounded-lg overflow-hidden relative bg-slate-800">
-              <img 
-                src={detection.image_url} 
-                alt={detection.animal_type} 
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
-              />
+              {detection.image_url ? (
+                <img 
+                  src={detection.image_url} 
+                  alt={detection.animal_type} 
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[9px] text-slate-500 font-mono">
+                  No Image
+                </div>
+              )}
               {detection.priority === 'High' && (
                 <div className="absolute top-1 left-1 bg-red-600 text-[8px] font-bold px-1 rounded flex items-center gap-0.5">
                   <AlertCircle size={8} />

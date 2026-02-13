@@ -7,7 +7,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Google Maps API (key from Vite env) -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=%VITE_GOOGLE_MAPS_API_KEY%&libraries=visualization"></script>
+    <script
+      src="https://maps.googleapis.com/maps/api/js?key=%VITE_GOOGLE_MAPS_API_KEY%&libraries=visualization&loading=async"
+      async
+      defer
+    ></script>
     <style>
       body {
         font-family: 'Inter', sans-serif;
@@ -65,7 +69,7 @@
 }
 </script>
 
-<link rel="stylesheet" href="/index.css">
+<!-- CSS is injected by Vite; avoid linking missing index.css -->
 </head>
   <body>
     <div id="root"></div>
