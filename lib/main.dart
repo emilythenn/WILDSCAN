@@ -111,11 +111,11 @@ class _MainNavigationState extends State<MainNavigation> {
         }
       }
 
-      // 2. Get current position with modern settings
+      // 2. Get current position
       Position position = await Geolocator.getCurrentPosition(
-        locationSettings: AndroidSettings(
+        locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.best,
-          timeLimit: const Duration(seconds: 15),
+          timeLimit: Duration(seconds: 15),
         ),
       );
 
@@ -123,22 +123,36 @@ class _MainNavigationState extends State<MainNavigation> {
       lng = position.longitude;
       String coords = "${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}";
 
-      // 3. Reverse Geocoding: Convert coordinates to city name
+      // 3. Reverse Geocoding: 
       String placeName = "";
-      if (!kIsWeb) {
+      
+      if (kIsWeb) {
+        try {
+          final url = Uri.parse(
+              'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=10&addressdetails=1');
+          final response = await http.get(url);
+          if (response.statusCode == 200) {
+            final data = json.decode(response.body);
+            final addr = data['address'];
+            placeName = addr['city'] ?? addr['state'] ?? addr['town'] ?? "";
+          }
+        } catch (e) {
+          debugPrint("Web Geocoding failed: $e");
+        }
+      } else {
+        // --- Android/iOS 端的地理反编码 ---
         try {
           List<Placemark> placemarks = await placemarkFromCoordinates(lat!, lng!);
           if (placemarks.isNotEmpty) {
             Placemark p = placemarks[0];
-            // Combine locality (City) and street or name
             placeName = "${p.locality ?? p.subAdministrativeArea ?? ''} ";
           }
         } catch (e) {
-          debugPrint("Geocoding failed: $e");
+          debugPrint("Mobile Geocoding failed: $e");
         }
       }
 
-      // 4. Update the state - This will trigger the child widget to update its TextField
+      // 4. Update the state
       setState(() {
         displayLocation = placeName.trim().isEmpty ? coords : "${placeName.trim()} ($coords)";
       });
@@ -148,6 +162,7 @@ class _MainNavigationState extends State<MainNavigation> {
       setState(() => displayLocation = "Location Timeout. Tap to retry.");
     }
   }
+
   void _resetApp() {
     setState(() {
       _currentIndex = 0;
@@ -248,7 +263,7 @@ class _MainNavigationState extends State<MainNavigation> {
         "location": {
           "lat": lat ?? 0.0,
           "lng": lng ?? 0.0,
-          "display": displayLocation
+          "state": displayLocation
         },
       });
 
