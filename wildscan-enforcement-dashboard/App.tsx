@@ -8,7 +8,7 @@ import FiltersBar from './components/FiltersBar';
 import StatusStrip from './components/StatusStrip';
 import LoginPage from './components/LoginPage';
 import { Detection } from './types';
-import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "./firebase";
 
 const AUTH_STORAGE_KEY = "wildscan_dashboard_auth";
@@ -29,7 +29,7 @@ const App: React.FC = () => {
   const [severityFilter, setSeverityFilter] = useState<Detection["priority"][]>(allPriorities);
   const [sourceFilter, setSourceFilter] = useState("All");
   const [minConfidence, setMinConfidence] = useState(0);
-  const [notifications, setNotifications] = useState<{ id: string; caseId: string; title: string; description: string; time: string }[]>([]);
+  const [toastNotifications, setToastNotifications] = useState<{ id: string; caseId: string; title: string; description: string; time: string }[]>([]);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const hasRequestedNotifications = useRef(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
   const [evidenceByCase, setEvidenceByCase] = useState<Record<string, { fileUrl: string; platformSource?: string; aiSummary?: string; evidenceHash?: string }>>({});
   const [caseStatusById, setCaseStatusById] = useState<Record<string, Detection["status"]>>({});
+  const [readStateByCase, setReadStateByCase] = useState<Record<string, boolean>>({});
 
   const normalizePriority = (value?: string): Detection["priority"] => {
     const normalized = value?.toLowerCase();
@@ -134,6 +135,7 @@ const App: React.FC = () => {
 
   // Listen to live data from Firestore
   const CASE_STATUS_COLLECTION = "caseStatus";
+  const NOTIFICATION_STATE_COLLECTION = "notificationState";
 
   useEffect(() => {
     if (!isAuthenticated) return () => {};
@@ -169,6 +171,25 @@ const App: React.FC = () => {
       setFirestoreStatus("error");
       setFirestoreError("Firestore initialization failed.");
     }
+    return () => unsubscribe();
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return () => {};
+    if (!db) return () => {};
+
+    const stateRef = collection(db, NOTIFICATION_STATE_COLLECTION);
+    const unsubscribe = onSnapshot(stateRef, (snapshot: any) => {
+      const next: Record<string, boolean> = {};
+      snapshot.docs.forEach((docSnap: any) => {
+        const data = docSnap.data();
+        if (data?.read) {
+          next[docSnap.id] = true;
+        }
+      });
+      setReadStateByCase(next);
+    });
+
     return () => unsubscribe();
   }, [isAuthenticated]);
 
@@ -328,6 +349,23 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const markCasesRead = useCallback((caseIds: string[]) => {
+    if (!db || caseIds.length === 0) return;
+    const batch = writeBatch(db);
+    caseIds.forEach((caseId) => {
+      const alreadyRead = readStateByCase[caseId];
+      if (alreadyRead) return;
+      batch.set(
+        doc(db, NOTIFICATION_STATE_COLLECTION, caseId),
+        { caseId, read: true, readAt: serverTimestamp(), updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+    });
+    batch.commit().catch((error) => {
+      console.error("Failed to mark notifications as read:", error);
+    });
+  }, [db, readStateByCase]);
+
   const handleOpenNotification = useCallback((caseId: string) => {
     const target = detections.find((d) => d.id === caseId);
     if (target) {
@@ -337,19 +375,22 @@ const App: React.FC = () => {
 
   const handleNotificationClick = useCallback((caseId: string) => {
     handleOpenNotification(caseId);
+    markCasesRead([caseId]);
     setIsNotificationsOpen(false);
-    setHasUnreadNotifications(false);
-  }, [handleOpenNotification]);
+  }, [handleOpenNotification, markCasesRead]);
 
   const handleToggleNotifications = useCallback(() => {
     setIsNotificationsOpen((prev) => {
       const next = !prev;
       if (next) {
-        setHasUnreadNotifications(false);
+        const unreadCaseIds = detections
+          .map((d) => d.id)
+          .filter((caseId) => !readStateByCase[caseId]);
+        markCasesRead(unreadCaseIds);
       }
       return next;
     });
-  }, []);
+  }, [detections, markCasesRead, readStateByCase]);
 
   useEffect(() => {
     if (detections.length === 0) return;
@@ -370,16 +411,14 @@ const App: React.FC = () => {
         time: new Date().toLocaleTimeString(),
       }));
 
-      setNotifications((prev) => {
+      setToastNotifications((prev) => {
         const next = [...created, ...prev];
         return next.slice(0, 3);
       });
 
-      setHasUnreadNotifications(true);
-
       created.forEach((notice) => {
         setTimeout(() => {
-          setNotifications((prev) => prev.filter((item) => item.id !== notice.id));
+          setToastNotifications((prev) => prev.filter((item) => item.id !== notice.id));
         }, 6000);
       });
 
@@ -392,6 +431,15 @@ const App: React.FC = () => {
       });
     }
   }, [detections, handleOpenNotification, showSystemNotification]);
+
+  useEffect(() => {
+    if (detections.length === 0) {
+      setHasUnreadNotifications(false);
+      return;
+    }
+    const hasUnread = detections.some((d) => !readStateByCase[d.id]);
+    setHasUnreadNotifications(hasUnread);
+  }, [detections, readStateByCase]);
 
   // Sync selection when list changes
   useEffect(() => {
@@ -461,11 +509,15 @@ const App: React.FC = () => {
       return;
     }
 
-    setDoc(statusDoc, { caseId, status, updatedAt: serverTimestamp() }, { merge: true }).catch((error) => {
+    setDoc(
+      statusDoc,
+      { caseId, status, statusDate: serverTimestamp(), updatedAt: serverTimestamp() },
+      { merge: true }
+    ).catch((error) => {
       console.error("Failed to save case status:", error);
     });
 
-    updateDoc(doc(db, "cases", caseId), { status, updatedAt: serverTimestamp() }).catch((error) => {
+    updateDoc(doc(db, "cases", caseId), { status, statusDate: serverTimestamp(), updatedAt: serverTimestamp() }).catch((error) => {
       console.error("Failed to update case status on case:", error);
     });
   }, []);
@@ -481,6 +533,28 @@ const App: React.FC = () => {
     );
   }
 
+  const notificationCases = useMemo(() => {
+    const sorted = [...detections].sort((a, b) => {
+      const aTime = new Date(a.timestamp).getTime();
+      const bTime = new Date(b.timestamp).getTime();
+      if (!Number.isFinite(aTime) && !Number.isFinite(bTime)) return 0;
+      if (!Number.isFinite(aTime)) return 1;
+      if (!Number.isFinite(bTime)) return -1;
+      return bTime - aTime;
+    });
+
+    return sorted.map((d) => ({
+      id: `notice-${d.id}`,
+      caseId: d.id,
+      title: d.animal_type || d.case_name || "Unknown case",
+      description: d.description || "No description provided.",
+      time: new Date(d.timestamp).toLocaleString(),
+      location: d.location_name || "Unknown location",
+      status: d.status || "Pending",
+      isRead: !!readStateByCase[d.id],
+    }));
+  }, [detections, readStateByCase]);
+
   return (
     <div
       className="min-h-screen bg-slate-950 text-slate-100 overflow-y-auto font-sans"
@@ -495,7 +569,7 @@ const App: React.FC = () => {
         <div className="flex flex-col flex-1 overflow-hidden relative">
           <Header
             onSearch={setSearchQuery}
-            notifications={notifications}
+            notificationCases={notificationCases}
             isNotificationsOpen={isNotificationsOpen}
             hasUnreadNotifications={hasUnreadNotifications}
             onToggleNotifications={handleToggleNotifications}
@@ -528,9 +602,9 @@ const App: React.FC = () => {
         />
 
           <main className="flex flex-1 overflow-hidden relative">
-            {notifications.length > 0 && (
+            {toastNotifications.length > 0 && (
               <div className="absolute top-4 right-6 z-40 space-y-2">
-                {notifications.map((notice) => (
+                {toastNotifications.map((notice) => (
                   <button
                     key={notice.id}
                     onClick={() => handleOpenNotification(notice.caseId)}

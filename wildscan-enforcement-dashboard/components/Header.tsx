@@ -4,7 +4,16 @@ import { Shield, Bell, Search } from 'lucide-react';
 
 interface HeaderProps {
   onSearch: (query: string) => void;
-  notifications: { id: string; caseId: string; title: string; description: string; time: string }[];
+  notificationCases: {
+    id: string;
+    caseId: string;
+    title: string;
+    description: string;
+    time: string;
+    location: string;
+    status: string;
+    isRead: boolean;
+  }[];
   isNotificationsOpen: boolean;
   hasUnreadNotifications: boolean;
   onToggleNotifications: () => void;
@@ -16,7 +25,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({
   onSearch,
-  notifications,
+  notificationCases,
   isNotificationsOpen,
   hasUnreadNotifications,
   onToggleNotifications,
@@ -42,8 +51,12 @@ const Header: React.FC<HeaderProps> = ({
   return (
     <header className="h-16 bg-slate-950 border-b border-emerald-500/20 flex items-center justify-between px-6 z-20 shadow-lg">
       <div className="flex items-center gap-4">
-        <div className="w-10 h-10 bg-emerald-500 rounded flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-          <Shield className="text-slate-950" size={24} />
+        <div className="relative">
+          <div className="absolute -inset-1 rounded-2xl bg-emerald-500/25 blur-md" aria-hidden="true" />
+          <div className="relative w-11 h-11 rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-[0_8px_25px_rgba(16,185,129,0.25)] flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400/80 shadow-[0_0_12px_rgba(16,185,129,0.7)]" aria-hidden="true" />
+            <Shield className="text-emerald-200" size={22} />
+          </div>
         </div>
         <div>
           <h1 className="text-xl font-bold tracking-tight text-slate-100">
@@ -93,20 +106,20 @@ const Header: React.FC<HeaderProps> = ({
                 Notifications
               </div>
               <div className="max-h-72 overflow-y-auto">
-                {notifications.length === 0 ? (
+                {notificationCases.length === 0 ? (
                   <div className="px-4 py-6 text-xs text-slate-500 text-center">No new cases yet.</div>
                 ) : (
-                  notifications.map((notice) => (
+                  notificationCases.map((notice) => (
                     <button
                       key={notice.id}
                       onClick={() => onNotificationClick(notice.caseId)}
-                      className="w-full text-left px-4 py-3 border-b border-slate-800 hover:bg-slate-900/70 transition-colors"
+                      className={`w-full text-left px-4 py-3 border-b border-slate-800 hover:bg-slate-900/70 transition-colors ${notice.isRead ? "opacity-70" : ""}`}
                     >
                       <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono">
                         {notice.title}
                       </div>
-                      <div className="mt-1 text-xs text-slate-200 line-clamp-3">
-                        {notice.description}
+                      <div className="mt-1 text-[10px] text-slate-400 font-mono uppercase tracking-widest">
+                        {notice.location}
                       </div>
                       <div className="mt-2 text-[10px] text-slate-500 font-mono">{notice.time}</div>
                     </button>
