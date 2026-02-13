@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1098649222627",
+    "project_id": "wildscan-487110",
+    "storage_bucket": "wildscan-487110.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1098649222627:android:10fb3e559ead325eb274d6",
+        "android_client_info": {
+          "package_name": "com.android.application"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCevgjgpxUihnz_284OPt6xZemC_GkWq0U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
