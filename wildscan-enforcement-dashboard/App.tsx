@@ -581,11 +581,11 @@ const App: React.FC = () => {
   // Sync selection when list changes
   useEffect(() => {
     if (filteredDetections.length > 0) {
+      // Only keep selection if it still exists in the filtered list
       const currentSelectedExists = filteredDetections.find(d => d.id === selectedDetection?.id);
-      if (!selectedDetection || !currentSelectedExists) {
-        setSelectedDetection(filteredDetections[0]);
-      } else {
-        setSelectedDetection(currentSelectedExists);
+      if (selectedDetection && !currentSelectedExists) {
+        // Current selection no longer exists, deselect
+        setSelectedDetection(null);
       }
     } else {
       setSelectedDetection(null);

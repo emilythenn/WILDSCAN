@@ -2,6 +2,23 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Detection } from '../types';
 
+const getBrowserLocation = async (): Promise<{ lat: number; lng: number } | null> => {
+  if (!navigator.geolocation) return null;
+
+  return await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+};
+
 interface CrimeMapProps {
   detections: Detection[];
   selectedDetection: Detection | null;
@@ -15,8 +32,20 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
   const markersRef = useRef<{ [key: string]: any }>({});
   const infoWindowRef = useRef<any | null>(null);
   const routeRendererRef = useRef<any | null>(null);
+  const originMarkerRef = useRef<any | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [routeStatus, setRouteStatus] = useState<string | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [currentAddress, setCurrentAddress] = useState<string | null>(null);
+  const [routeSummary, setRouteSummary] = useState<{ duration?: string; distance?: string } | null>(null);
+  const [routeSteps, setRouteSteps] = useState<Array<{ instruction: string; endLat: number; endLng: number; distance?: string; duration?: string }>>([]);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [isGuiding, setIsGuiding] = useState(false);
+  const [guidanceStatus, setGuidanceStatus] = useState<string | null>(null);
+  const lastInfoRef = useRef<{ detection: Detection; marker: any } | null>(null);
+  const guidanceWatchRef = useRef<number | null>(null);
+  const lastSpokenIndexRef = useRef<number | null>(null);
+  const currentStepIndexRef = useRef(0);
 
   const mapDetections = useMemo(() => detections, [detections]);
 
@@ -26,6 +55,105 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
 
   const getMarkerColor = useCallback((d: Detection) => {
     return d.priority === 'High' ? '#ef4444' : d.priority === 'Medium' ? '#f59e0b' : '#10b981';
+  }, []);
+
+  useEffect(() => {
+    currentStepIndexRef.current = currentStepIndex;
+  }, [currentStepIndex]);
+
+  const toLat = (value: any) => (typeof value?.lat === "function" ? value.lat() : value?.lat);
+  const toLng = (value: any) => (typeof value?.lng === "function" ? value.lng() : value?.lng);
+
+  const distanceMeters = useCallback((a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const r = 6371000;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * r * Math.asin(Math.sqrt(h));
+  }, []);
+
+  const speakInstruction = useCallback((text: string) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const synth = window.speechSynthesis;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    synth.speak(utterance);
+  }, []);
+
+  const buildInfoWindowContent = useCallback((d: Detection, location?: { lat: number; lng: number } | null) => {
+    const locationLabel = d.location_name || "";
+    const coords = `${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`;
+    const confidence = Number.isFinite(d.confidence)
+      ? `${Math.round(d.confidence * 100)}%`
+      : "";
+    const priority = d.priority || "";
+    const status = d.status || "Pending";
+    const currentCoords = location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : "Unknown";
+    const sameLocationCases = detections.filter(
+      (item) => item.id !== d.id && item.location_name && item.location_name === d.location_name
+    );
+    const relatedList = sameLocationCases.slice(0, 3)
+      .map((item) => `${item.animal_type || "Case"} (${item.id})`)
+      .join(" • ");
+
+    return `
+      <div style="font-family: 'Inter', sans-serif; font-size: 12px; color: #ffffff; background: #0b1220; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.4); box-shadow: 0 12px 30px rgba(2, 6, 23, 0.65); min-width: 210px;">
+        <div style="font-weight: 800; margin-bottom: 6px; color: #ffffff;">${d.animal_type || "Case"}</div>
+        <div style="font-size: 10px; color: #34d399; text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 6px; font-weight: 700;">Case ${d.id}</div>
+        ${locationLabel ? `<div style="margin-bottom: 6px; color: #ffffff; font-weight: 700;">${locationLabel}</div>` : ""}
+        <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+          ${priority ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(16, 185, 129, 0.55); background: rgba(16, 185, 129, 0.18); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #ffffff; font-weight: 700;">${priority}</span>` : ""}
+          ${confidence ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.5); background: rgba(148, 163, 184, 0.15); font-size: 10px; color: #ffffff; font-weight: 700;">${confidence} Conf</span>` : ""}
+          ${status ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(34, 197, 94, 0.55); background: rgba(34, 197, 94, 0.18); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #ffffff; font-weight: 700;">${status}</span>` : ""}
+        </div>
+        <div style="color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;">Case Coords: ${coords}</div>
+        <div style="margin-top: 6px; color: #ffffff; font-size: 11px; font-weight: 700;">Current Location: ${currentCoords}</div>
+        ${sameLocationCases.length > 0 ? `
+          <div style="margin-top: 8px; color: #e2e8f0; font-size: 10px; font-weight: 700;">
+            Other cases nearby (${sameLocationCases.length}):
+            <div style="margin-top: 4px; color: #ffffff; font-weight: 700;">${relatedList}${sameLocationCases.length > 3 ? " ..." : ""}</div>
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }, [detections]);
+
+  const buildOriginInfoContent = useCallback((address?: string | null, location?: { lat: number; lng: number } | null) => {
+    const coords = location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : "Unknown";
+    return `
+      <div style="font-family: 'Inter', sans-serif; font-size: 12px; color: #ffffff; background: #0b1220; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.5); box-shadow: 0 12px 30px rgba(2, 6, 23, 0.65); min-width: 200px;">
+        <div style="font-weight: 700; margin-bottom: 6px; color: #ffffff;">Current Location (A)</div>
+        <div style="font-size: 10px; color: #e2e8f0; font-weight: 700;">${address || "Address unavailable"}</div>
+        <div style="margin-top: 6px; color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;">${coords}</div>
+      </div>
+    `;
+  }, []);
+
+  const updateCurrentAddress = useCallback((location: { lat: number; lng: number } | null) => {
+    const win = window as any;
+    if (!location || !win.google?.maps || !googleMap.current) return;
+    const geocoder = new win.google.maps.Geocoder();
+    geocoder.geocode({ location }, (results: any, status: string) => {
+      console.log('🗺️ Geocode Status:', status);
+      console.log('🗺️ Geocode Results:', results);
+      if (status === "OK" && results?.[0]) {
+        const address = results[0].formatted_address;
+        setCurrentAddress(address);
+        console.log('✅ Address Found:', address);
+        // Update marker A's stored data
+        if (originMarkerRef.current) {
+          originMarkerRef.current.__originData = { location, address };
+        }
+      } else {
+        setCurrentAddress(null);
+        console.log('❌ Geocoding Failed:', status);
+      }
+    });
   }, []);
 
   const mapStyles = useMemo(() => ([
@@ -99,29 +227,17 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
         });
 
         marker.addListener('click', () => {
-          const locationLabel = d.location_name || "";
-          const coords = `${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}`;
-          const confidence = Number.isFinite(d.confidence)
-            ? `${Math.round(d.confidence * 100)}%`
-            : "";
-          const priority = d.priority || "";
-          const status = d.status || "Pending";
           if (infoWindowRef.current) {
-            infoWindowRef.current.setContent(
-              `<div style="font-family: 'Inter', sans-serif; font-size: 12px; color: #e2e8f0; background: #0f172a; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(16, 185, 129, 0.25); box-shadow: 0 10px 24px rgba(2, 6, 23, 0.55); min-width: 180px;">
-                <div style="font-weight: 700; margin-bottom: 6px; color: #f8fafc;">${d.animal_type || "Case"}</div>
-                <div style="font-size: 10px; color: #10b981; text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 6px;">Case ${d.id}</div>
-                ${locationLabel ? `<div style="margin-bottom: 6px; color: #94a3b8;">${locationLabel}</div>` : ""}
-                <div style="display: flex; gap: 8px; margin-bottom: 6px;">
-                  ${priority ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.1); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;">${priority}</span>` : ""}
-                  ${confidence ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.4); background: rgba(148, 163, 184, 0.1); font-size: 10px;">${confidence} Conf</span>` : ""}
-                  ${status ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(34, 197, 94, 0.4); background: rgba(34, 197, 94, 0.1); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;">${status}</span>` : ""}
-                </div>
-                <div style="color: #34d399; font-family: 'JetBrains Mono', monospace; font-size: 11px;">${coords}</div>
-              </div>`
-            );
+            infoWindowRef.current.setContent(buildInfoWindowContent(d, currentLocation));
             infoWindowRef.current.open({ map: googleMap.current, anchor: marker });
           }
+          lastInfoRef.current = { detection: d, marker };
+          getBrowserLocation().then((location) => {
+            if (location) {
+              setCurrentLocation(location);
+              updateCurrentAddress(location);
+            }
+          });
           onMarkerClick(d);
         });
         markersRef.current[d.id] = marker;
@@ -130,12 +246,23 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
         markersRef.current[d.id].setIcon(markerIcon);
       }
     });
-  }, [getMarkerColor, markerDetections, onMarkerClick, selectedDetection?.id]);
+  }, [buildInfoWindowContent, currentLocation, getMarkerColor, markerDetections, onMarkerClick, selectedDetection?.id]);
+
+  useEffect(() => {
+    if (!currentLocation || !lastInfoRef.current || !infoWindowRef.current || !googleMap.current) return;
+    infoWindowRef.current.setContent(
+      buildInfoWindowContent(lastInfoRef.current.detection, currentLocation)
+    );
+    infoWindowRef.current.open({ map: googleMap.current, anchor: lastInfoRef.current.marker });
+  }, [buildInfoWindowContent, currentLocation]);
 
   useEffect(() => {
     // Fix: Use casted window to trigger map animations safely
     const win = window as any;
-    if (googleMap.current && selectedDetection && win.google) {
+    if (!googleMap.current || !win.google) return;
+
+    if (selectedDetection) {
+      // Zoom into selected case
       if (!Number.isFinite(selectedDetection.lat) || !Number.isFinite(selectedDetection.lng)) return;
       googleMap.current.panTo({ lat: selectedDetection.lat, lng: selectedDetection.lng });
       googleMap.current.setZoom(10);
@@ -146,12 +273,30 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
         marker.setAnimation(win.google.maps.Animation.BOUNCE);
         setTimeout(() => marker.setAnimation(null), 1500);
       }
+    } else if (markerDetections.length > 0) {
+      // No selection - zoom out to show all markers (See All view)
+      if (markerDetections.length === 1) {
+        const only = markerDetections[0];
+        if (Number.isFinite(only.lat) && Number.isFinite(only.lng)) {
+          googleMap.current.setCenter({ lat: only.lat, lng: only.lng });
+          googleMap.current.setZoom(8);
+        }
+      } else {
+        const bounds = new win.google.maps.LatLngBounds();
+        markerDetections.forEach((d) => {
+          if (Number.isFinite(d.lat) && Number.isFinite(d.lng)) {
+            bounds.extend(new win.google.maps.LatLng(d.lat, d.lng));
+          }
+        });
+        googleMap.current.fitBounds(bounds, 80);
+      }
     }
-  }, [selectedDetection]);
+  }, [selectedDetection, markerDetections]);
 
   useEffect(() => {
     const win = window as any;
-    if (!googleMap.current || !win.google || mapDetections.length === 0) return;
+    // Only auto-fit bounds when NO case is selected and markers change
+    if (!googleMap.current || !win.google || mapDetections.length === 0 || selectedDetection) return;
 
     const nextBoundsKey = mapDetections
       .map((d) => `${d.id}:${d.lat},${d.lng}`)
@@ -177,35 +322,9 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     });
 
     googleMap.current.fitBounds(bounds, 80);
-  }, [mapDetections]);
+  }, [mapDetections, selectedDetection]);
 
-  const requestUserLocation = useCallback(async () => {
-    if (!navigator.geolocation) return null;
-
-    return await new Promise<{ lat: number; lng: number } | null>((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          resolve({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
-        },
-        () => resolve(null),
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    });
-  }, []);
-
-  const parseManualLocation = (value: string | null) => {
-    if (!value) return null;
-    const [latRaw, lngRaw] = value.split(",").map((entry) => entry.trim());
-    const lat = Number(latRaw);
-    const lng = Number(lngRaw);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng };
-  };
-
-  const handlePatrolRoute = useCallback(async () => {
+  const buildRoute = useCallback((origin: { lat: number; lng: number } | null) => {
     const win = window as any;
     if (!googleMap.current || !win.google?.maps) {
       setRouteStatus("Google Maps not ready.");
@@ -215,13 +334,6 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     if (!selectedDetection || !Number.isFinite(selectedDetection.lat) || !Number.isFinite(selectedDetection.lng)) {
       setRouteStatus("Select a case to build a route.");
       return;
-    }
-
-    setRouteStatus("Fetching current location...");
-    let origin = await requestUserLocation();
-    if (!origin) {
-      const manual = window.prompt("Enter your location as lat,lng");
-      origin = parseManualLocation(manual);
     }
 
     if (!origin) {
@@ -235,7 +347,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
 
     if (!routeRendererRef.current) {
       routeRendererRef.current = new win.google.maps.DirectionsRenderer({
-        suppressMarkers: false,
+        suppressMarkers: true,
         preserveViewport: true,
         polylineOptions: {
           strokeColor: "#38bdf8",
@@ -248,6 +360,28 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     routeRendererRef.current.setMap(googleMap.current);
 
     const service = new win.google.maps.DirectionsService();
+
+    if (!originMarkerRef.current) {
+      originMarkerRef.current = new win.google.maps.Marker({
+        position: origin,
+        map: googleMap.current,
+        label: "A",
+      });
+      originMarkerRef.current.__originData = { location: origin, address: null };
+      originMarkerRef.current.addListener("click", () => {
+        if (infoWindowRef.current) {
+          const data = originMarkerRef.current.__originData || { location: origin, address: null };
+          infoWindowRef.current.setContent(buildOriginInfoContent(data.address, data.location));
+          infoWindowRef.current.open({ map: googleMap.current, anchor: originMarkerRef.current });
+        }
+      });
+    } else {
+      originMarkerRef.current.setPosition(origin);
+      originMarkerRef.current.setMap(googleMap.current);
+      originMarkerRef.current.__originData = { location: origin, address: null };
+    }
+
+    updateCurrentAddress(origin);
     service.route(
       {
         origin: originLatLng,
@@ -257,7 +391,31 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       (result: any, status: string) => {
         if (status === "OK" && result) {
           routeRendererRef.current.setDirections(result);
-          setRouteStatus("Optimized route to case ready.");
+          const leg = result.routes?.[0]?.legs?.[0];
+          const duration = leg?.duration?.text;
+          const distance = leg?.distance?.text;
+          const steps = Array.isArray(leg?.steps)
+            ? leg.steps
+                .map((step: any) => {
+                  const instruction = (step?.instructions || "").replace(/<[^>]+>/g, "").trim();
+                  const endLat = toLat(step?.end_location);
+                  const endLng = toLng(step?.end_location);
+                  if (!instruction || !Number.isFinite(endLat) || !Number.isFinite(endLng)) return null;
+                  return {
+                    instruction,
+                    endLat,
+                    endLng,
+                    distance: step?.distance?.text,
+                    duration: step?.duration?.text,
+                  };
+                })
+                .filter(Boolean)
+            : [];
+          setRouteSummary({ duration, distance });
+          setRouteSteps(steps as Array<{ instruction: string; endLat: number; endLng: number; distance?: string; duration?: string }>);
+          setCurrentStepIndex(0);
+          lastSpokenIndexRef.current = null;
+          setRouteStatus("Optimized route ready. Select Start to begin guidance.");
         } else {
           const hint = status === "REQUEST_DENIED"
             ? "Check Maps API key, Directions API, and billing."
@@ -265,13 +423,154 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
               ? "No driving route found."
               : "";
           setRouteStatus(`Unable to build route to case (${status}). ${hint}`.trim());
+          setRouteSummary(null);
+          setRouteSteps([]);
+          setCurrentStepIndex(0);
+          lastSpokenIndexRef.current = null;
           if (routeRendererRef.current) {
             routeRendererRef.current.setMap(null);
           }
         }
       }
     );
-  }, [requestUserLocation, selectedDetection]);
+  }, [buildOriginInfoContent, currentAddress, currentLocation, selectedDetection, updateCurrentAddress]);
+
+  const handlePatrolRoute = useCallback(async () => {
+    setRouteStatus("Fetching current location...");
+    const origin = await getBrowserLocation();
+    if (origin) {
+      setCurrentLocation(origin);
+      updateCurrentAddress(origin);
+      setRouteStatus("Location locked. Building route...");
+      buildRoute(origin);
+    } else {
+      setRouteStatus("Unable to fetch current location. Please enable location permissions.");
+    }
+  }, [buildRoute, updateCurrentAddress]);
+
+  useEffect(() => {
+    if (!selectedDetection) return;
+    setRouteStatus(null);
+    setRouteSummary(null);
+    setRouteSteps([]);
+    setCurrentStepIndex(0);
+    lastSpokenIndexRef.current = null;
+    if (routeRendererRef.current) {
+      routeRendererRef.current.setMap(null);
+    }
+    if (originMarkerRef.current) {
+      originMarkerRef.current.setMap(null);
+    }
+  }, [selectedDetection?.id]);
+
+  const stopGuidance = useCallback(() => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    if (guidanceWatchRef.current !== null) {
+      navigator.geolocation.clearWatch(guidanceWatchRef.current);
+      guidanceWatchRef.current = null;
+    }
+    setIsGuiding(false);
+    setGuidanceStatus("Guidance stopped.");
+  }, []);
+
+  const handleStartGuidance = useCallback(() => {
+    if (!routeSteps.length) {
+      setGuidanceStatus("Build a route first.");
+      return;
+    }
+    if (!navigator.geolocation) {
+      setGuidanceStatus("Live guidance requires location access.");
+      return;
+    }
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setGuidanceStatus("Voice guidance is not supported in this browser.");
+      return;
+    }
+
+    if (guidanceWatchRef.current !== null) {
+      navigator.geolocation.clearWatch(guidanceWatchRef.current);
+    }
+
+    // Open Waze with origin (current location) and destination
+    if (selectedDetection && Number.isFinite(selectedDetection.lat) && Number.isFinite(selectedDetection.lng)) {
+      const originParam = currentLocation 
+        ? `&from=${currentLocation.lat},${currentLocation.lng}` 
+        : '';
+      const url = `https://waze.com/ul?ll=${selectedDetection.lat},${selectedDetection.lng}${originParam}&navigate=yes`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+
+    setIsGuiding(true);
+    setGuidanceStatus("Live guidance started. Waze navigation opened."
+    );
+
+    const intro = `Route ready. Estimated time ${routeSummary?.duration || ""}. Distance ${routeSummary?.distance || ""}.`;
+    speakInstruction(intro);
+
+    guidanceWatchRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const liveLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        setCurrentLocation(liveLocation);
+
+        const stepIndex = currentStepIndexRef.current;
+        const step = routeSteps[stepIndex];
+        if (!step) {
+          speakInstruction("You have arrived at the destination.");
+          setGuidanceStatus("Arrived at destination.");
+          stopGuidance();
+          return;
+        }
+
+        const remaining = distanceMeters(liveLocation, { lat: step.endLat, lng: step.endLng });
+        if (remaining <= 35) {
+          const nextIndex = stepIndex + 1;
+          setCurrentStepIndex(nextIndex);
+          if (lastSpokenIndexRef.current !== nextIndex) {
+            lastSpokenIndexRef.current = nextIndex;
+            const nextStep = routeSteps[nextIndex];
+            if (nextStep) {
+              speakInstruction(nextStep.instruction);
+            } else {
+              speakInstruction("You have arrived at the destination.");
+              setGuidanceStatus("Arrived at destination.");
+              stopGuidance();
+            }
+          }
+        } else if (lastSpokenIndexRef.current === null) {
+          lastSpokenIndexRef.current = stepIndex;
+          speakInstruction(step.instruction);
+        }
+      },
+      (error) => {
+        console.error('Location watch error:', error);
+        if (error.code === error.PERMISSION_DENIED) {
+          setGuidanceStatus("Location permission denied. Please enable location access.");
+        } else if (error.code === error.TIMEOUT) {
+          setGuidanceStatus("Location timeout. Retrying...");
+          // Don't stop guidance on timeout, let it retry
+        } else {
+          setGuidanceStatus("Unable to access live location. Check GPS signal.");
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 }
+    );
+  }, [currentLocation, distanceMeters, routeSteps, routeSummary, selectedDetection, speakInstruction, stopGuidance]);
+
+  useEffect(() => {
+    return () => {
+      if (guidanceWatchRef.current !== null) {
+        navigator.geolocation.clearWatch(guidanceWatchRef.current);
+      }
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   const handleSeeAll = useCallback(() => {
     const win = window as any;
@@ -306,9 +605,11 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       
       {/* HUD Overlays */}
       <div className="absolute top-4 right-4 space-y-2">
-        <div className="bg-slate-950/80 border border-emerald-500/20 px-3 py-1 rounded backdrop-blur text-[10px] font-mono text-emerald-400 pointer-events-none">
-          SAT_LOCK: ACTIVE
-        </div>
+        {selectedDetection && (
+          <div className="bg-slate-950/80 border border-emerald-500/20 px-3 py-1 rounded backdrop-blur text-[10px] font-mono text-emerald-400 pointer-events-none">
+            SAT_LOCK: ACTIVE
+          </div>
+        )}
         <button
           type="button"
           onClick={handleSeeAll}
@@ -319,27 +620,56 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       </div>
 
       {/* Crosshair Simulation Overlay */}
-      <div className="absolute inset-0 pointer-events-none border border-emerald-500/10">
-        <div className="absolute top-1/2 left-0 w-8 h-px bg-emerald-500/30"></div>
-        <div className="absolute top-1/2 right-0 w-8 h-px bg-emerald-500/30"></div>
-        <div className="absolute top-0 left-1/2 w-px h-8 bg-emerald-500/30"></div>
-        <div className="absolute bottom-0 left-1/2 w-px h-8 bg-emerald-500/30"></div>
-      </div>
+      {selectedDetection && (
+        <div className="absolute inset-0 pointer-events-none border border-emerald-500/10">
+          <div className="absolute top-1/2 left-0 w-8 h-px bg-emerald-500/30"></div>
+          <div className="absolute top-1/2 right-0 w-8 h-px bg-emerald-500/30"></div>
+          <div className="absolute top-0 left-1/2 w-px h-8 bg-emerald-500/30"></div>
+          <div className="absolute bottom-0 left-1/2 w-px h-8 bg-emerald-500/30"></div>
+        </div>
+      )}
 
       <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-2">
-        <div className="bg-slate-900/85 backdrop-blur-md border border-emerald-500/30 p-3 rounded-lg shadow-2xl">
-          <h3 className="text-emerald-400 text-[10px] uppercase font-mono mb-2">Smart Patrol Route</h3>
-          <button
-            type="button"
-            onClick={handlePatrolRoute}
-            className="px-3 py-2 rounded border border-sky-400/60 bg-sky-400/10 text-[10px] font-mono uppercase tracking-widest text-sky-200 hover:border-sky-300 hover:text-sky-100"
-          >
-            Optimized Route Only
-          </button>
-          {routeStatus && (
-            <div className="mt-2 text-[10px] text-slate-400 font-mono">{routeStatus}</div>
-          )}
-        </div>
+        {selectedDetection && (
+          <div className="bg-slate-900/85 backdrop-blur-md border border-emerald-500/30 p-3 rounded-lg shadow-2xl">
+            <h3 className="text-emerald-400 text-[10px] uppercase font-mono mb-2">Smart Patrol Route</h3>
+            <button
+              type="button"
+              onClick={handlePatrolRoute}
+              className="px-3 py-2 rounded border border-sky-400/60 bg-sky-400/10 text-[10px] font-mono uppercase tracking-widest text-sky-200 hover:border-sky-300 hover:text-sky-100"
+            >
+              Optimize Route
+            </button>
+            <button
+              type="button"
+              onClick={isGuiding ? stopGuidance : handleStartGuidance}
+              className="mt-2 px-3 py-2 rounded border border-emerald-400/60 bg-emerald-500/10 text-[10px] font-mono uppercase tracking-widest text-emerald-200 hover:border-emerald-300 hover:text-emerald-100"
+            >
+              {isGuiding ? "Stop Guidance" : "Start Guidance"}
+            </button>
+            {routeSummary && (
+              <div className="mt-2 text-[10px] text-slate-200 font-mono">
+                ETA: {routeSummary.duration || "N/A"} • {routeSummary.distance || "N/A"}
+              </div>
+            )}
+            {routeSteps.length > 0 && (
+              <div className="mt-2 text-[10px] text-slate-300 font-mono">
+                Step {Math.min(currentStepIndex + 1, routeSteps.length)} of {routeSteps.length}
+              </div>
+            )}
+            {routeSteps[currentStepIndex] && (
+              <div className="mt-1 text-[10px] text-slate-200 font-mono">
+                Next: {routeSteps[currentStepIndex].instruction}
+              </div>
+            )}
+            {routeStatus && (
+              <div className="mt-2 text-[10px] text-slate-400 font-mono">{routeStatus}</div>
+            )}
+            {guidanceStatus && (
+              <div className="mt-2 text-[10px] text-emerald-300 font-mono">{guidanceStatus}</div>
+            )}
+          </div>
+        )}
       </div>
 
     </div>

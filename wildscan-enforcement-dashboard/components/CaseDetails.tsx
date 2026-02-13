@@ -190,7 +190,7 @@ Focus on: Why multiple reports in the same location increase credibility, and wh
   };
 
   const requestGeminiViaRest = async (apiKey: string, prompt: string) => {
-    const endpoint = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
