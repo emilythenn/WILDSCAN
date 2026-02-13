@@ -5,11 +5,14 @@ import { Detection } from "../types";
 interface FiltersBarProps {
   severityFilter: Detection["priority"][];
   sourceFilter: string;
+  locationFilter: string;
   minConfidence: number;
   availableSources: string[];
+  availableLocations: string[];
   onToggleSeverity: (level: Detection["priority"]) => void;
   onSelectAllSeverities: () => void;
   onSourceChange: (value: string) => void;
+  onLocationChange: (value: string) => void;
   onMinConfidenceChange: (value: number) => void;
   onReset: () => void;
 }
@@ -23,15 +26,18 @@ const severityStyles: Record<Detection["priority"], string> = {
 const FiltersBar: React.FC<FiltersBarProps> = ({
   severityFilter,
   sourceFilter,
+  locationFilter,
   minConfidence,
   availableSources,
+  availableLocations,
   onToggleSeverity,
   onSelectAllSeverities,
   onSourceChange,
+  onLocationChange,
   onMinConfidenceChange,
   onReset,
 }) => {
-  const isAllSelected = (Object.keys(severityStyles) as Detection["priority"]).every((level) =>
+  const isAllSelected = (Object.keys(severityStyles) as Detection["priority"][]).every((level) =>
     severityFilter.includes(level)
   );
 
@@ -82,6 +88,22 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
           {availableSources.map((source) => (
             <option key={source} value={source}>
               {source}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-slate-500 font-mono uppercase">Location</span>
+        <select
+          value={locationFilter}
+          onChange={(e) => onLocationChange(e.target.value)}
+          className="bg-slate-900 border border-slate-800 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/50"
+        >
+          <option value="All">All</option>
+          {availableLocations.map((location) => (
+            <option key={location} value={location}>
+              {location}
             </option>
           ))}
         </select>

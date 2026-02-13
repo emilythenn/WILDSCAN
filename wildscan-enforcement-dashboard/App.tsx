@@ -8,7 +8,7 @@ import FiltersBar from './components/FiltersBar';
 import StatusStrip from './components/StatusStrip';
 import LoginPage from './components/LoginPage';
 import { Detection } from './types';
-import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, serverTimestamp, updateDoc, writeBatch, deleteField } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, serverTimestamp, updateDoc, writeBatch, deleteField, where, getDocs } from "firebase/firestore";
 import { db } from "./firebase";
 
 const AUTH_STORAGE_KEY = "wildscan_dashboard_auth";
@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const allPriorities: Detection["priority"][] = ["High", "Medium", "Low"];
   const [severityFilter, setSeverityFilter] = useState<Detection["priority"][]>(allPriorities);
   const [sourceFilter, setSourceFilter] = useState("All");
+  const [locationFilter, setLocationFilter] = useState("All");
   const [minConfidence, setMinConfidence] = useState(0);
   const [toastNotifications, setToastNotifications] = useState<{ id: string; caseId: string; title: string; description: string; time: string }[]>([]);
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -36,7 +37,7 @@ const App: React.FC = () => {
   const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
   const [firestoreStatus, setFirestoreStatus] = useState<"connecting" | "connected" | "error" | "offline">("connecting");
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
-  const [evidenceByCase, setEvidenceByCase] = useState<Record<string, { fileUrl: string; platformSource?: string; aiSummary?: string; evidenceHash?: string }>>({});
+  const [evidenceByCase, setEvidenceByCase] = useState<Record<string, { fileUrl: string; platformSource?: string; aiSummary?: string; hash?: string }>>({});
   const [caseStatusById, setCaseStatusById] = useState<Record<string, Detection["status"]>>({});
   const [readStateByCase, setReadStateByCase] = useState<Record<string, boolean>>({});
 
@@ -91,7 +92,7 @@ const App: React.FC = () => {
     return counts;
   }, [caseDocs]);
 
-  const toDetection = (doc: { id: string; data: any }, evidence?: { fileUrl: string; platformSource?: string; aiSummary?: string; evidenceHash?: string }): Detection => {
+  const toDetection = (doc: { id: string; data: any }, evidence?: { fileUrl: string; platformSource?: string; aiSummary?: string; hash?: string }): Detection => {
     const data = doc.data ?? {};
     const location = data.location ?? {};
     const createdAt = data.createdAt ?? data.timestamp ?? data.detectedAt ?? data.updatedAt;
@@ -128,7 +129,7 @@ const App: React.FC = () => {
       post_url: data.post_url,
       description: data.description || data.summary || evidence?.aiSummary || data.status || "",
       status,
-      evidence_hash: evidence?.evidenceHash || data.evidenceHash || data.hash || data.sha256,
+      evidence_hash: evidence?.hash || "",
       trust_score: trustScore,
     };
   };
@@ -206,14 +207,14 @@ const App: React.FC = () => {
         return;
       }
 
-      const nextMap: Record<string, { fileUrl: string; uploadedAt?: string; platformSource?: string; aiSummary?: string; evidenceHash?: string }> = {};
+      const nextMap: Record<string, { fileUrl: string; uploadedAt?: string; platformSource?: string; aiSummary?: string; hash?: string }> = {};
       snapshot.docs.forEach((doc: any) => {
         const data = doc.data();
         const caseId = data.caseId as string | undefined;
         const fileUrl = data.fileUrl as string | undefined;
         const platformSource = data.platformSource as string | undefined;
         const aiSummary = data.aiSummary as string | undefined;
-        const evidenceHash = data.evidenceHash || data.hash || data.sha256;
+        const Hash = data.hash;
         if (!caseId || !fileUrl) return;
         let uploadedAt = data.uploadedAt;
         if (uploadedAt && typeof uploadedAt.toDate === "function") {
@@ -221,13 +222,13 @@ const App: React.FC = () => {
         }
 
         if (!nextMap[caseId]) {
-          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary, evidenceHash };
+          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary, hash: Hash };
           return;
         }
 
         const current = nextMap[caseId];
         if (!current.uploadedAt || (uploadedAt && uploadedAt > current.uploadedAt)) {
-          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary, evidenceHash };
+          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary, hash: Hash };
         }
       });
 
@@ -266,6 +267,43 @@ const App: React.FC = () => {
     return Array.from(new Set(detections.map((d) => d.source))).sort();
   }, [detections]);
 
+  const availableLocations = useMemo(() => {
+    return Array.from(new Set(detections.map((d) => d.location_name).filter((loc) => loc && loc.trim()))).sort();
+  }, [detections]);
+
+  // Track hash uniqueness and cases without hashes
+  const hashValidation = useMemo(() => {
+    const hashes = new Map<string, string[]>(); // hash -> caseIds
+    const casesWithoutHash: string[] = [];
+    const duplicateHashes: string[] = [];
+
+    detections.forEach((d) => {
+      if (d.evidence_hash) {
+        const caseIds = hashes.get(d.evidence_hash) || [];
+        caseIds.push(d.id);
+        hashes.set(d.evidence_hash, caseIds);
+      } else {
+        casesWithoutHash.push(d.id);
+      }
+    });
+
+    hashes.forEach((caseIds, hash) => {
+      if (caseIds.length > 1) {
+        // Duplicate hash detected - same evidence used for multiple cases
+        duplicateHashes.push(...caseIds);
+      }
+    });
+
+    return {
+      uniqueHashCount: hashes.size,
+      totalCasesWithHash: detections.filter((d) => d.evidence_hash).length,
+      casesWithoutHash,
+      duplicateHashes,
+      allHashesUnique: duplicateHashes.length === 0,
+      allCasesHaveHash: casesWithoutHash.length === 0,
+    };
+  }, [detections]);
+
   // Filter detections based on search query and filters
   const filteredDetections = useMemo(() => {
     return detections.filter(d => 
@@ -276,9 +314,52 @@ const App: React.FC = () => {
         d.id?.toLowerCase().includes(searchQuery.toLowerCase())) &&
       severityFilter.includes(d.priority) &&
       (sourceFilter === "All" || d.source === sourceFilter) &&
+      (locationFilter === "All" || d.location_name === locationFilter) &&
       d.confidence >= minConfidence
     );
-  }, [detections, minConfidence, searchQuery, severityFilter, sourceFilter]);
+  }, [detections, minConfidence, searchQuery, severityFilter, sourceFilter, locationFilter]);
+
+  // Auto-calculate hashes for cases that don't have them
+  useEffect(() => {
+    if (hashValidation.casesWithoutHash.length === 0) return;
+    if (!db) return;
+
+    const calculateMissingHashes = async () => {
+      for (const caseId of hashValidation.casesWithoutHash) {
+        const detection = detections.find((d) => d.id === caseId);
+        if (!detection?.image_url) continue;
+
+        try {
+          const response = await fetch(detection.image_url, { mode: "cors" });
+          if (!response.ok) continue;
+
+          const buffer = await response.arrayBuffer();
+          const hashBuffer = await window.crypto.subtle.digest("SHA-256", buffer);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+          // Save hash to evidence collection
+          const evidenceRef = collection(db, "evidence");
+          const q = query(evidenceRef, where("caseId", "==", caseId));
+          const querySnapshot = await getDocs(q);
+
+          if (!querySnapshot.empty) {
+            const evidenceDoc = querySnapshot.docs[0];
+            await updateDoc(evidenceDoc.ref, {
+              hash: hashHex,
+              hashCalculatedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+            console.log(`✓ Hash calculated and saved for case ${caseId}`);
+          }
+        } catch (err) {
+          console.warn(`Failed to calculate hash for case ${caseId}:`, err);
+        }
+      }
+    };
+
+    calculateMissingHashes();
+  }, [hashValidation.casesWithoutHash, detections, db]);
 
   const stats = useMemo(() => {
     const total = filteredDetections.length;
@@ -487,6 +568,7 @@ const App: React.FC = () => {
   const handleResetFilters = useCallback(() => {
     setSeverityFilter(allPriorities);
     setSourceFilter("All");
+    setLocationFilter("All");
     setMinConfidence(0);
   }, [allPriorities]);
 
@@ -602,11 +684,14 @@ const App: React.FC = () => {
         <FiltersBar
           severityFilter={severityFilter}
           sourceFilter={sourceFilter}
+          locationFilter={locationFilter}
           minConfidence={minConfidence}
           availableSources={availableSources}
+          availableLocations={availableLocations}
           onToggleSeverity={handleToggleSeverity}
           onSelectAllSeverities={handleSelectAllSeverities}
           onSourceChange={setSourceFilter}
+          onLocationChange={setLocationFilter}
           onMinConfidenceChange={setMinConfidence}
           onReset={handleResetFilters}
         />
@@ -637,9 +722,9 @@ const App: React.FC = () => {
                 ))}
               </div>
             )}
-            <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
             {/* Live Feed Header Area */}
-            <div className="h-48 border-b border-emerald-500/20 bg-slate-900/50 backdrop-blur-sm z-10">
+            <div className="h-48 border-b border-emerald-500/20 bg-slate-900/50 backdrop-blur-sm z-10 flex-shrink-0">
               <div className="px-6 py-2 flex justify-between items-center bg-slate-950/50 border-b border-emerald-500/10">
                 <div className="flex items-center gap-2 text-emerald-400 text-xs font-mono uppercase tracking-widest">
                   <Activity size={14} className="animate-pulse" />
@@ -657,7 +742,7 @@ const App: React.FC = () => {
             </div>
 
             {/* Map Area */}
-            <div className="flex-1 relative bg-slate-900">
+            <div className="flex-1 min-h-[600px] relative bg-slate-900 flex-shrink-0">
                <CrimeMap 
                 detections={filteredDetections} 
                 selectedDetection={selectedDetection}
@@ -693,6 +778,7 @@ const App: React.FC = () => {
             <aside className="w-96 border-l border-emerald-500/20 bg-slate-900/80 backdrop-blur-md transition-all duration-300 overflow-hidden flex flex-col shadow-2xl">
                <CaseDetails
                  detection={selectedDetection}
+                 allDetections={detections}
                  onStatusChange={handleStatusChange}
                />
             </aside>
