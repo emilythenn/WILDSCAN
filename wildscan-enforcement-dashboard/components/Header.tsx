@@ -51,20 +51,26 @@ const Header: React.FC<HeaderProps> = ({
   return (
     <header className="h-16 bg-slate-950 border-b border-emerald-500/20 flex items-center justify-between px-6 z-20 shadow-lg">
       <div className="flex items-center gap-4">
-        <div className="relative">
-          <div className="absolute -inset-1 rounded-2xl bg-emerald-500/25 blur-md" aria-hidden="true" />
-          <div className="relative w-11 h-11 rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-[0_8px_25px_rgba(16,185,129,0.25)] flex items-center justify-center">
-            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400/80 shadow-[0_0_12px_rgba(16,185,129,0.7)]" aria-hidden="true" />
-            <Shield className="text-emerald-200" size={22} />
+        <div className="flex items-center gap-3">
+          <svg viewBox="0 0 64 64" className="h-9 w-9" aria-hidden="true">
+            <circle cx="32" cy="32" r="28" fill="#ffffff" stroke="#1d4ed8" strokeWidth="3" />
+            <line x1="32" y1="6" x2="32" y2="14" stroke="#1d4ed8" strokeWidth="3" strokeLinecap="round" />
+            <line x1="32" y1="50" x2="32" y2="58" stroke="#1d4ed8" strokeWidth="3" strokeLinecap="round" />
+            <line x1="6" y1="32" x2="14" y2="32" stroke="#1d4ed8" strokeWidth="3" strokeLinecap="round" />
+            <line x1="50" y1="32" x2="58" y2="32" stroke="#1d4ed8" strokeWidth="3" strokeLinecap="round" />
+            <path
+              d="M18 38c2-6 10-11 18-11 8 0 13 3 16 7-2 1-4 1-6 0-3-2-7-2-11 0l-4 2-2 6-5 2c-4 2-9 1-10-6z"
+              fill="#111827"
+            />
+            <path d="M42 26l8-3" stroke="#ef4444" strokeWidth="3" strokeLinecap="round" />
+            <line x1="14" y1="50" x2="50" y2="14" stroke="#ef4444" strokeWidth="4" strokeLinecap="round" />
+          </svg>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-white">WILDSCAN</h1>
+            <p className="text-[10px] text-emerald-400 font-mono uppercase tracking-widest leading-none">
+              Enforcement Dashboard v2.6.0
+            </p>
           </div>
-        </div>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-100">
-            WILD<span className="text-emerald-500">SCAN</span>
-          </h1>
-          <p className="text-[10px] text-emerald-400 font-mono uppercase tracking-widest leading-none">
-            Enforcement Dashboard v2.6.0
-          </p>
         </div>
       </div>
 

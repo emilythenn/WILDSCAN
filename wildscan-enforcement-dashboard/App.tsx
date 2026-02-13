@@ -8,7 +8,7 @@ import FiltersBar from './components/FiltersBar';
 import StatusStrip from './components/StatusStrip';
 import LoginPage from './components/LoginPage';
 import { Detection } from './types';
-import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, serverTimestamp, updateDoc, writeBatch, deleteField } from "firebase/firestore";
 import { db } from "./firebase";
 
 const AUTH_STORAGE_KEY = "wildscan_dashboard_auth";
@@ -48,12 +48,12 @@ const App: React.FC = () => {
     return "Low";
   };
 
-  const normalizeStatus = (value?: string): Detection["status"] => {
+  const normalizeStatus = (value?: string): Detection["status"] | undefined => {
     const normalized = value?.toLowerCase();
     if (normalized === "resolved" || normalized === "successful") return "Resolved";
     if (normalized === "investigating" || normalized === "under investigation") return "Investigating";
     if (normalized === "pending") return "Pending";
-    return "Pending";
+    return undefined;
   };
 
   const resolveLocationName = (data: any) => {
@@ -108,7 +108,7 @@ const App: React.FC = () => {
         ? data.confidence
         : 0;
 
-    const status = (caseStatusById[doc.id] || normalizeStatus(data.status) || "Pending") as Detection["status"];
+    const status = (caseStatusById[doc.id] || normalizeStatus(data.status)) as Detection["status"] | undefined;
     const trustKey = buildTrustKey(data);
     const trustScore = trustKey ? trustScoreByKey[trustKey] || 0 : 0;
 
@@ -136,6 +136,7 @@ const App: React.FC = () => {
   // Listen to live data from Firestore
   const CASE_STATUS_COLLECTION = "caseStatus";
   const NOTIFICATION_STATE_COLLECTION = "notificationState";
+  const NOTIFICATIONS_COLLECTION = "notifications";
 
   useEffect(() => {
     if (!isAuthenticated) return () => {};
@@ -360,6 +361,11 @@ const App: React.FC = () => {
         { caseId, read: true, readAt: serverTimestamp(), updatedAt: serverTimestamp() },
         { merge: true }
       );
+      batch.set(
+        doc(db, NOTIFICATIONS_COLLECTION, caseId),
+        { read: true, readAt: serverTimestamp(), updatedAt: serverTimestamp() },
+        { merge: true }
+      );
     });
     batch.commit().catch((error) => {
       console.error("Failed to mark notifications as read:", error);
@@ -410,6 +416,26 @@ const App: React.FC = () => {
         description: d.description || "No description provided.",
         time: new Date().toLocaleTimeString(),
       }));
+
+      if (db) {
+        const batch = writeBatch(db);
+        newCases.forEach((d) => {
+          batch.set(
+            doc(db, NOTIFICATIONS_COLLECTION, d.id),
+            {
+              caseId: d.id,
+              title: d.animal_type || d.case_name || "Unknown case",
+              location: d.location_name || "Unknown location",
+              createdAt: serverTimestamp(),
+              read: false,
+            },
+            { merge: true }
+          );
+        });
+        batch.commit().catch((error) => {
+          console.error("Failed to create notification records:", error);
+        });
+      }
 
       setToastNotifications((prev) => {
         const next = [...created, ...prev];
@@ -503,7 +529,10 @@ const App: React.FC = () => {
         console.error("Failed to clear case status:", error);
       });
 
-      updateDoc(doc(db, "cases", caseId), { status: "Pending", updatedAt: serverTimestamp() }).catch((error) => {
+      updateDoc(
+        doc(db, "cases", caseId),
+        { status: deleteField(), statusDate: deleteField(), updatedAt: serverTimestamp() }
+      ).catch((error) => {
         console.error("Failed to reset case status on case:", error);
       });
       return;
