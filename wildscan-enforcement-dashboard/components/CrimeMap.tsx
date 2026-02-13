@@ -18,16 +18,6 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
   const [mapError, setMapError] = useState<string | null>(null);
   const [routeStatus, setRouteStatus] = useState<string | null>(null);
 
-  const parseTimestamp = useCallback((value: Detection["timestamp"]) => {
-    if (!value) return Number.NaN;
-    if (typeof value === "object" && value !== null && "toDate" in value) {
-      const maybeDate = (value as { toDate?: () => Date }).toDate?.();
-      if (maybeDate instanceof Date) return maybeDate.getTime();
-    }
-    const parsed = new Date(value as string).getTime();
-    return Number.isFinite(parsed) ? parsed : Number.NaN;
-  }, []);
-
   const mapDetections = useMemo(() => detections, [detections]);
 
   const markerDetections = useMemo(() => {
@@ -188,45 +178,63 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     googleMap.current.fitBounds(bounds, 80);
   }, [mapDetections]);
 
-  const handlePatrolRoute = useCallback(() => {
+  const requestUserLocation = useCallback(async () => {
+    if (!navigator.geolocation) return null;
+
+    return await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          });
+        },
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    });
+  }, []);
+
+  const parseManualLocation = (value: string | null) => {
+    if (!value) return null;
+    const [latRaw, lngRaw] = value.split(",").map((entry) => entry.trim());
+    const lat = Number(latRaw);
+    const lng = Number(lngRaw);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  };
+
+  const handlePatrolRoute = useCallback(async () => {
     const win = window as any;
     if (!googleMap.current || !win.google?.maps) {
       setRouteStatus("Google Maps not ready.");
       return;
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    const todayTargets = detections
-      .filter((d) => d.priority === "High")
-      .filter((d) => {
-        const time = parseTimestamp(d.timestamp);
-        return Number.isFinite(time) && time >= today.getTime() && time < tomorrow.getTime();
-      })
-      .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, 5);
-
-    if (todayTargets.length < 2) {
-      setRouteStatus("Not enough high-risk points today.");
-      if (routeRendererRef.current) {
-        routeRendererRef.current.setMap(null);
-      }
+    if (!selectedDetection || !Number.isFinite(selectedDetection.lat) || !Number.isFinite(selectedDetection.lng)) {
+      setRouteStatus("Select a case to build a route.");
       return;
     }
 
-    const origin = { lat: todayTargets[0].lat, lng: todayTargets[0].lng };
-    const destination = { lat: todayTargets[todayTargets.length - 1].lat, lng: todayTargets[todayTargets.length - 1].lng };
-    const waypoints = todayTargets.slice(1, -1).map((d) => ({
-      location: { lat: d.lat, lng: d.lng },
-      stopover: true,
-    }));
+    setRouteStatus("Fetching current location...");
+    let origin = await requestUserLocation();
+    if (!origin) {
+      const manual = window.prompt("Enter your location as lat,lng");
+      origin = parseManualLocation(manual);
+    }
+
+    if (!origin) {
+      setRouteStatus("Unable to determine your location.");
+      return;
+    }
+
+    const destination = { lat: selectedDetection.lat, lng: selectedDetection.lng };
+    const originLatLng = new win.google.maps.LatLng(origin.lat, origin.lng);
+    const destinationLatLng = new win.google.maps.LatLng(destination.lat, destination.lng);
 
     if (!routeRendererRef.current) {
       routeRendererRef.current = new win.google.maps.DirectionsRenderer({
-        suppressMarkers: true,
+        suppressMarkers: false,
         preserveViewport: true,
         polylineOptions: {
           strokeColor: "#38bdf8",
@@ -241,22 +249,28 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     const service = new win.google.maps.DirectionsService();
     service.route(
       {
-        origin,
-        destination,
-        waypoints,
-        optimizeWaypoints: true,
+        origin: originLatLng,
+        destination: destinationLatLng,
         travelMode: win.google.maps.TravelMode.DRIVING,
       },
       (result: any, status: string) => {
         if (status === "OK" && result) {
           routeRendererRef.current.setDirections(result);
-          setRouteStatus("Optimized patrol route ready.");
+          setRouteStatus("Optimized route to case ready.");
         } else {
-          setRouteStatus("Unable to build patrol route.");
+          const hint = status === "REQUEST_DENIED"
+            ? "Check Maps API key, Directions API, and billing."
+            : status === "ZERO_RESULTS"
+              ? "No driving route found."
+              : "";
+          setRouteStatus(`Unable to build route to case (${status}). ${hint}`.trim());
+          if (routeRendererRef.current) {
+            routeRendererRef.current.setMap(null);
+          }
         }
       }
     );
-  }, [detections, parseTimestamp]);
+  }, [requestUserLocation, selectedDetection]);
 
   const handleSeeAll = useCallback(() => {
     const win = window as any;

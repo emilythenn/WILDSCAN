@@ -64,6 +64,36 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
     return null;
   };
 
+  const resolveAiSummary = () => {
+    if (aiAnalysis) return aiAnalysis;
+    if (isAnalyzing) return "Gemini analysis pending. Please retry in a moment.";
+    return "Gemini unavailable. Check API key, billing, and network access.";
+  };
+
+  const requestGeminiViaRest = async (apiKey: string, prompt: string) => {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ text: prompt }],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Gemini HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    return await getResponseText(data);
+  };
+
   // Fix: Integrate Gemini AI to provide real-time verification and risk assessment
   useEffect(() => {
     if (detection) {
@@ -76,19 +106,31 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
           if (!apiKey) {
             throw new Error("Missing VITE_GEMINI_API_KEY");
           }
-          const ai = new GoogleGenAI({ apiKey });
-          const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Analyze this wildlife trade detection for enforcement officers.
-              Species: ${detection.animal_type}
-              Source Platform: ${detection.source}
-              User Provided Description: ${detection.description || 'N/A'}
-              Location: ${detection.location_name}
-              
-              Provide a professional 2-sentence risk assessment regarding the legality and conservation status.`,
-          });
-          const responseText = await getResponseText(response);
-          setAiAnalysis(responseText || "Analysis completed.");
+          const prompt = `Analyze this wildlife trade detection for enforcement officers.
+            Species: ${detection.animal_type}
+            Source Platform: ${detection.source}
+            User Provided Description: ${detection.description || "N/A"}
+            Location: ${detection.location_name}
+            
+            Provide a professional 2-sentence risk assessment regarding the legality and conservation status.`;
+
+          let responseText: string | null = null;
+          try {
+            const ai = new GoogleGenAI({ apiKey });
+            const response = await ai.models.generateContent({
+              model: "gemini-1.5-flash",
+              contents: prompt,
+            });
+            responseText = await getResponseText(response);
+          } catch (sdkError) {
+            responseText = await requestGeminiViaRest(apiKey, prompt);
+          }
+
+          if (!responseText) {
+            throw new Error("Empty Gemini response");
+          }
+
+          setAiAnalysis(responseText);
         } catch (err) {
           console.error("Gemini analysis failed:", err);
           setAiAnalysis("AI verification offline. Detection flagged based on metadata matching illegal trade patterns.");
@@ -189,7 +231,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
   };
 
   const buildReportText = () => {
-    const aiSummary = aiAnalysis || "AI verification offline. Detection flagged based on metadata matching illegal trade patterns.";
+    const aiSummary = resolveAiSummary();
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
     const reportLines = [
       "WILDSCAN Evidence Report",
@@ -236,7 +278,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
   };
 
   const buildReportHtml = () => {
-    const aiSummary = aiAnalysis || "AI verification offline. Detection flagged based on metadata matching illegal trade patterns.";
+    const aiSummary = resolveAiSummary();
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
     return `<!DOCTYPE html>
 <html>
@@ -362,7 +404,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, onStatusChange }) 
     const margin = 40;
     let y = 72;
 
-    const aiSummary = aiAnalysis || "AI verification offline. Detection flagged based on metadata matching illegal trade patterns.";
+    const aiSummary = resolveAiSummary();
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
 
     const ensureSpace = (height: number) => {
