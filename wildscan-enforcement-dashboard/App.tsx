@@ -41,6 +41,7 @@ const App: React.FC = () => {
   const [caseStatusById, setCaseStatusById] = useState<Record<string, Detection["status"]>>({});
   const [readStateByCase, setReadStateByCase] = useState<Record<string, boolean>>({});
 
+
   const normalizePriority = (value?: string): Detection["priority"] => {
     const normalized = value?.toLowerCase();
     if (normalized === "high") return "High";
@@ -623,6 +624,7 @@ const App: React.FC = () => {
       window.localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   }, []);
+
 
   const handleStatusChange = useCallback((caseId: string, status: Detection["status"] | undefined) => {
     setCaseStatusById((prev) => {

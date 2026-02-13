@@ -28,28 +28,29 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     return d.priority === 'High' ? '#ef4444' : d.priority === 'Medium' ? '#f59e0b' : '#10b981';
   }, []);
 
+  const mapStyles = useMemo(() => ([
+    { elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
+    { elementType: 'labels.text.fill', stylers: [{ color: '#475569' }] },
+    { elementType: 'labels.text.stroke', stylers: [{ color: '#0f172a' }] },
+    { featureType: 'administrative', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#020617' }] },
+    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+    { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  ]), []);
+
   useEffect(() => {
     // Fix: Cast window to any to access google property without TS errors
     const win = window as any;
     if (mapRef.current && !googleMap.current && win.google) {
-      // Initialize map with a dark style
       googleMap.current = new win.google.maps.Map(mapRef.current, {
         center: { lat: 4.2105, lng: 101.9758 }, // Malaysia Center
         zoom: 6,
         disableDefaultUI: true,
-        styles: [
-          { elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
-          { elementType: 'labels.text.fill', stylers: [{ color: '#475569' }] },
-          { elementType: 'labels.text.stroke', stylers: [{ color: '#0f172a' }] },
-          { featureType: 'administrative', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
-          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#020617' }] },
-          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
-          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-        ]
+        styles: mapStyles,
       });
       infoWindowRef.current = new win.google.maps.InfoWindow();
     }
-  }, []);
+  }, [mapStyles]);
 
   useEffect(() => {
     const win = window as any;

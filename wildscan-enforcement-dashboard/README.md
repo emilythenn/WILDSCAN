@@ -116,6 +116,21 @@ A real-time wildlife trade enforcement dashboard powered by AI-driven evidence i
 - **System Integration:** Optional browser system notifications
 - **Notification State Tracking:** Firebase-backed read/unread status
 
+### ⚡ Quick-Action Ranger Messaging
+- **Send to Ranger Button:** One-click WhatsApp or email message for each case
+- **Pre-Filled Details:** Case ID, species, location name, and coordinates
+- **Field-Ready:** Enables fast dispatch from the command center to patrol teams
+
+### 🌐 Multi-Language Translation
+- **Translate to English:** On-demand translation of case descriptions via Gemini
+- **Local Context Support:** Helps officers understand Chinese/Malay listings quickly
+- **Preserves Meaning:** Translation preserves names, species, and evidence wording
+
+### 🌓 Dark / Light Mode Toggle
+- **Theme Switch:** Simple toggle in the header
+- **Night Shift Ready:** Dark mode optimized for low-light operations
+- **Daylight Visibility:** Light mode for briefing rooms and reports
+
 ### 📋 Report Generation
 - **AI-Powered Reports:** Automated report generation for prosecution
 - **Multiple Formats:** Export to PDF or Word (.docx) formats

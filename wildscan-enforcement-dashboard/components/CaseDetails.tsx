@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { Detection } from '../types';
-import { Clock, MapPin, Share2, FileText, ShieldCheck, Download, Link as LinkIcon, AlertCircle, Activity } from 'lucide-react';
+import { Clock, MapPin, Share2, FileText, ShieldCheck, Download, Link as LinkIcon, AlertCircle, Activity, X } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { jsPDF } from "jspdf";
+import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, UnderlineType, convertInchesToTwip, ImageRun, Table, TableCell, TableRow, WidthType, BorderStyle, Packer } from "docx";
 import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -80,6 +81,41 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
     }
     return null;
   };
+
+  const buildRangerMessage = () => {
+    if (!detection) return "";
+    const coords = `${detection.lat.toFixed(6)}, ${detection.lng.toFixed(6)}`;
+    const location = detection.location_name || "Unknown location";
+    const mapLink = `https://www.google.com/maps?q=${detection.lat},${detection.lng}`;
+    return [
+      `WILDSCAN CASE ALERT`,
+      `Case ID: ${detection.id}`,
+      `Species: ${detection.animal_type}`,
+      `Location/State: ${location}`,
+      `Coordinates: ${coords}`,
+      `Map: ${mapLink}`,
+      `Description: ${detection.description || "N/A"}`,
+      `Evidence Image: ${detection.image_url || "N/A"}`,
+    ].join("\n");
+  };
+
+  const handleSendRangerWhatsApp = () => {
+    if (typeof window === "undefined") return;
+    const message = buildRangerMessage();
+    if (!message) return;
+    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const handleSendRangerEmail = () => {
+    if (typeof window === "undefined") return;
+    const message = buildRangerMessage();
+    if (!message) return;
+    const subject = `Case ${detection?.id} | ${detection?.animal_type} | ${detection?.location_name || "Unknown location"}`;
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+    window.open(gmailUrl, "_blank", "noopener,noreferrer");
+  };
+
 
   const buildLocalRiskSummary = (target: Detection) => {
     const confidencePercent = Math.round(target.confidence * 100);
@@ -457,57 +493,122 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     const localRisk = buildLocalRiskSummary(detection);
     const aiSummary = resolveAiSummary(localRisk.summary);
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
+    
+    // Check for duplicate hash
+    const duplicates = (allDetections || []).filter(
+      (d) => d.evidence_hash && d.evidence_hash === hash && d.id !== detection.id
+    );
+    const hasDuplicates = duplicates.length > 0;
+    
     const reportLines = [
       "WILDSCAN Evidence Report",
       "========================",
       `Case ID: ${detection.id}`,
+      `Case Name: ${detection.case_name || "N/A"}`,
       `Species: ${detection.animal_type}`,
       `Status: ${detection.status || "Pending"}`,
       `Trust Score: ${detection.trust_score ?? 0}`,
       `Priority: ${detection.priority}`,
+      `Risk Level: ${localRisk.riskLevel}`,
       `Confidence: ${(detection.confidence * 100).toFixed(2)}% (${confidenceLabel})`,
-      `Source: ${detection.source}`,
+      `Source/Market: ${detection.source}`,
       `Location: ${detection.location_name}`,
       `Coordinates: ${detection.lat.toFixed(6)}, ${detection.lng.toFixed(6)}`,
       `Detected At: ${formattedDate}`,
+      `User Handle: ${detection.user_handle || "N/A"}`,
+      `Post URL: ${detection.post_url || "N/A"}`,
+      `Image URL: ${detection.image_url || "N/A"}`,
       `Evidence Hash (SHA-256): ${hash || "N/A"}`,
+      `Hash Status: ${hasDuplicates ? "⚠ DUPLICATE DETECTED" : "✓ Unique Evidence"}`,
       "",
       "Case Highlights:",
       `- Priority level indicates enforcement urgency (${detection.priority}).`,
+      `- Risk level assessment: ${localRisk.riskLevel}.`,
       `- Confidence level suggests ${confidenceLabel.toLowerCase()} model certainty.`,
       `- Source platform flagged for monitored listings: ${detection.source}.`,
       `- Location clustered within monitoring region: ${detection.location_name}.`,
+      `- Trust Score (${detection.trust_score ?? 0}) indicates ${detection.trust_score && detection.trust_score > 1 ? 'multiple matching reports' : 'single report'} for this species/location.`,
       "",
       "Description:",
       detection.description || "N/A",
       "",
+    ];
+
+    // Add duplicate hash section if duplicates found
+    if (hasDuplicates) {
+      reportLines.push(
+        "⚠ DUPLICATE EVIDENCE HASH ALERT:",
+        "=================================",
+        `Identical evidence hash found in ${duplicates.length} other case(s).`,
+        "This indicates the EXACT SAME image is being used in multiple cases.",
+        "",
+        "Matching Cases:"
+      );
+      duplicates.forEach((dup, index) => {
+        reportLines.push(
+          `${index + 1}. Case ID: ${dup.id}`,
+          `   Species: ${dup.animal_type}`,
+          `   Location: ${dup.location_name}`,
+          `   Detected: ${new Date(dup.timestamp).toLocaleString()}`,
+          `   Priority: ${dup.priority}`,
+          `   Source: ${dup.source}`,
+          ""
+        );
+      });
+      reportLines.push(
+        "Possible Reasons for Duplicate Evidence:",
+        "- Illegal evidence reuse across multiple false reports",
+        "- Fraudulent duplicate submissions to manipulate data",
+        "- Copy-paste image manipulation",
+        "- Screenshot reposting from social media platforms",
+        "- Evidence tampering or chain-of-custody compromise",
+        "",
+        "⚠ CRITICAL WARNING: Duplicate evidence hashes severely compromise prosecution integrity.",
+        "Malaysian courts require verified chain of custody and authentic evidence.",
+        "IMMEDIATE INVESTIGATION RECOMMENDED to determine which case contains original evidence.",
+        ""
+      );
+    }
+
+    reportLines.push(
       "Operational Notes:",
       "- Preserve digital evidence and timestamps for chain of custody.",
       "- Verify listing persistence and capture screenshots where possible.",
       "- Cross-check with existing watchlists and repeat offenders.",
+      hasDuplicates ? "- ⚠ PRIORITY: Investigate duplicate evidence hash immediately." : "",
       "",
       "Evidence Integrity:",
       "- SHA-256 fingerprint stored to prove evidence has not been altered for Malaysian courts.",
+      hasDuplicates ? "- ⚠ ALERT: Evidence integrity compromised due to duplicate hash detection." : "- ✓ Evidence hash is unique - no duplicates detected.",
       "",
       "Evidence Timeline:",
       "1) Detection recorded and cataloged in monitoring queue.",
       "2) Verification and risk assessment completed.",
       "3) Case packaged for enforcement review and archival.",
+      hasDuplicates ? "4) ⚠ Duplicate hash detected - investigation required." : "",
       "",
       "Local Risk Summary:",
       localRisk.summary,
+      `Key Signals: ${localRisk.signals.join(", ")}.`,
       "",
       "Gemini Risk Assessment:",
       aiSummary,
-    ];
+    );
 
-    return reportLines.join("\n");
+    return reportLines.filter(line => line !== "").join("\n");
   };
 
   const buildReportHtml = () => {
     const localRisk = buildLocalRiskSummary(detection);
     const aiSummary = resolveAiSummary(localRisk.summary);
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
+    
+    // Check for duplicate hash
+    const duplicates = (allDetections || []).filter(
+      (d) => d.evidence_hash && d.evidence_hash === hash && d.id !== detection.id
+    );
+    const hasDuplicates = duplicates.length > 0;
+    
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -524,8 +625,11 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     .label { font-weight: 700; color: #0f172a; }
     .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 11px; background: #ecfdf3; color: #047857; border: 1px solid #a7f3d0; }
     .box { border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; background: #f1f5f9; }
+    .warning-box { border: 2px solid #dc2626; padding: 12px; border-radius: 8px; background: #fee2e2; }
     ul { margin: 0; padding-left: 18px; }
     li { margin: 4px 0; }
+    .unique-badge { background: #d1fae5; color: #065f46; border: 1px solid #059669; }
+    .duplicate-badge { background: #fee2e2; color: #991b1b; border: 1px solid #dc2626; }
   </style>
 </head>
 <body>
@@ -534,15 +638,26 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     <div class="badge">${detection.priority} Priority</div>
     <div class="meta">
       <div><span class="label">Case ID:</span> ${detection.id}</div>
+      <div><span class="label">Case Name:</span> ${detection.case_name || "N/A"}</div>
       <div><span class="label">Species:</span> ${detection.animal_type}</div>
       <div><span class="label">Status:</span> ${detection.status || "Pending"}</div>
       <div><span class="label">Trust Score:</span> ${detection.trust_score ?? 0}</div>
+      <div><span class="label">Risk Level:</span> ${localRisk.riskLevel}</div>
       <div><span class="label">Confidence:</span> ${(detection.confidence * 100).toFixed(2)}% (${confidenceLabel})</div>
-      <div><span class="label">Source:</span> ${detection.source}</div>
+      <div><span class="label">Source/Market:</span> ${detection.source}</div>
       <div><span class="label">Location:</span> ${detection.location_name}</div>
       <div><span class="label">Coordinates:</span> ${detection.lat.toFixed(6)}, ${detection.lng.toFixed(6)}</div>
       <div><span class="label">Detected At:</span> ${formattedDate}</div>
-      <div><span class="label">Evidence Hash:</span> ${hash || "N/A"}</div>
+      <div><span class="label">User Handle:</span> ${detection.user_handle || "N/A"}</div>
+      <div><span class="label">Post URL:</span> ${detection.post_url ? `<a href="${detection.post_url}" target="_blank">${detection.post_url}</a>` : "N/A"}</div>
+      <div><span class="label">Image URL:</span> ${detection.image_url ? `<a href="${detection.image_url}" target="_blank">View Image</a>` : "N/A"}</div>
+      <div style="grid-column: 1 / -1;"><span class="label">Evidence Hash (SHA-256):</span> ${hash || "N/A"}</div>
+      <div style="grid-column: 1 / -1;">
+        <span class="label">Hash Status:</span> 
+        <span class="badge ${hasDuplicates ? 'duplicate-badge' : 'unique-badge'}">
+          ${hasDuplicates ? "⚠ DUPLICATE DETECTED" : "✓ Unique Evidence"}
+        </span>
+      </div>
     </div>
   </div>
 
@@ -551,9 +666,11 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     <div class="box">
       <ul>
         <li>Priority level indicates enforcement urgency (${detection.priority}).</li>
+        <li>Risk level assessment: ${localRisk.riskLevel}.</li>
         <li>Confidence level suggests ${confidenceLabel.toLowerCase()} model certainty.</li>
         <li>Source platform flagged for monitored listings: ${detection.source}.</li>
         <li>Location clustered within monitoring region: ${detection.location_name}.</li>
+        <li>Trust Score (${detection.trust_score ?? 0}) indicates ${detection.trust_score && detection.trust_score > 1 ? 'multiple matching reports' : 'single report'} for this species/location.</li>
       </ul>
     </div>
   </div>
@@ -570,6 +687,44 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     </div>
   </div>
 
+  ${hasDuplicates ? `
+  <div class="section">
+    <h2 style="color: #dc2626;">⚠ DUPLICATE EVIDENCE HASH ALERT</h2>
+    <div class="warning-box">
+      <p><strong>Identical evidence hash found in ${duplicates.length} other case(s).</strong></p>
+      <p>This indicates the EXACT SAME image is being used in multiple cases.</p>
+      
+      <h3 style="margin-top: 12px;">Matching Cases:</h3>
+      <ul>
+        ${duplicates.map((dup, index) => `
+          <li>
+            <strong>Case ${index + 1}:</strong> ${dup.id}<br/>
+            Species: ${dup.animal_type}<br/>
+            Location: ${dup.location_name}<br/>
+            Detected: ${new Date(dup.timestamp).toLocaleString()}<br/>
+            Priority: ${dup.priority}, Source: ${dup.source}
+          </li>
+        `).join('')}
+      </ul>
+      
+      <h3 style="margin-top: 12px;">Possible Reasons for Duplicate Evidence:</h3>
+      <ul>
+        <li>Illegal evidence reuse across multiple false reports</li>
+        <li>Fraudulent duplicate submissions to manipulate data</li>
+        <li>Copy-paste image manipulation</li>
+        <li>Screenshot reposting from social media platforms</li>
+        <li>Evidence tampering or chain-of-custody compromise</li>
+      </ul>
+      
+      <p style="margin-top: 12px; font-weight: bold; color: #991b1b;">
+        ⚠ CRITICAL WARNING: Duplicate evidence hashes severely compromise prosecution integrity.
+        Malaysian courts require verified chain of custody and authentic evidence.
+        IMMEDIATE INVESTIGATION RECOMMENDED to determine which case contains original evidence.
+      </p>
+    </div>
+  </div>
+  ` : ''}
+
   <div class="section">
     <h2>Operational Notes</h2>
     <div class="box">
@@ -577,6 +732,7 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
         <li>Preserve digital evidence and timestamps for chain of custody.</li>
         <li>Verify listing persistence and capture screenshots where possible.</li>
         <li>Cross-check with existing watchlists and repeat offenders.</li>
+        ${hasDuplicates ? '<li style="color: #dc2626; font-weight: bold;">⚠ PRIORITY: Investigate duplicate evidence hash immediately.</li>' : ''}
       </ul>
     </div>
   </div>
@@ -586,6 +742,10 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     <div class="box">
       <p><strong>SHA-256 Fingerprint:</strong> ${hash || "N/A"}</p>
       <p>Hashing ensures the evidence remains tamper-proof for Malaysian courts.</p>
+      ${hasDuplicates ? 
+        '<p style="color: #dc2626; font-weight: bold;">⚠ ALERT: Evidence integrity compromised due to duplicate hash detection.</p>' :
+        '<p style="color: #059669; font-weight: bold;">✓ Evidence hash is unique - no duplicates detected.</p>'
+      }
     </div>
   </div>
 
@@ -596,13 +756,16 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
         <li>Detection recorded and cataloged in monitoring queue.</li>
         <li>Verification and risk assessment completed.</li>
         <li>Case packaged for enforcement review and archival.</li>
+        ${hasDuplicates ? '<li style="color: #dc2626; font-weight: bold;">⚠ Duplicate hash detected - investigation required.</li>' : ''}
       </ol>
-    </div>
   </div>
 
   <div class="section">
     <h2>Local Risk Summary</h2>
-    <div class="box">${localRisk.summary}</div>
+    <div class="box">
+      <p>${localRisk.summary}</p>
+      <p><strong>Key Signals:</strong> ${localRisk.signals.join(", ")}.</p>
+    </div>
   </div>
 
   <div class="section">
@@ -623,10 +786,470 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     URL.revokeObjectURL(link.href);
   };
 
-  const handleDownloadWord = () => {
+  const handleDownloadWord = async () => {
     if (!reportContent) return;
-    const blob = new Blob([reportContent.html], { type: "application/msword" });
-    downloadBlob(blob, `${reportContent.filename}.doc`);
+    
+    const localRisk = buildLocalRiskSummary(detection);
+    const aiSummary = resolveAiSummary(localRisk.summary);
+    const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
+    
+    // Check for duplicate hash
+    const duplicates = (allDetections || []).filter(
+      (d) => d.evidence_hash && d.evidence_hash === hash && d.id !== detection.id
+    );
+    const hasDuplicates = duplicates.length > 0;
+
+    try {
+      // Load image as base64
+      let imageData: ArrayBuffer | null = null;
+      if (detection.image_url) {
+        try {
+          const response = await fetch(detection.image_url, { mode: "cors" });
+          if (response.ok) {
+            imageData = await response.arrayBuffer();
+          }
+        } catch (err) {
+          console.warn("Could not load image for Word document:", err);
+        }
+      }
+
+      const sections = [];
+
+      // Title
+      sections.push(
+        new Paragraph({
+          text: "WILDSCAN EVIDENCE REPORT",
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Case ID: ${detection.id}`,
+              bold: true,
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `Generated: ${new Date().toLocaleString()}`,
+              size: 18,
+              color: "666666",
+            }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        })
+      );
+
+      // Case Summary Table
+      sections.push(
+        new Paragraph({
+          text: "CASE SUMMARY",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 200, after: 200 },
+        }),
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: [
+            new TableRow({
+              children: [
+                new TableCell({
+                  children: [new Paragraph({ children: [new TextRun({ text: "Case ID:", bold: true })] })],
+                  width: { size: 30, type: WidthType.PERCENTAGE },
+                }),
+                new TableCell({
+                  children: [new Paragraph(detection.id)],
+                  width: { size: 70, type: WidthType.PERCENTAGE },
+                }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Case Name:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(detection.case_name || "N/A")] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Species:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(detection.animal_type)] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Status:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(detection.status || "Pending")] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Priority:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(detection.priority)] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Risk Level:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(localRisk.riskLevel)] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Confidence:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(`${(detection.confidence * 100).toFixed(2)}% (${confidenceLabel})`)] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Trust Score:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(`${detection.trust_score ?? 0}`)] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Source/Market:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(detection.source)] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Location:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(detection.location_name)] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Coordinates:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(`${detection.lat.toFixed(6)}, ${detection.lng.toFixed(6)}`)] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Detected At:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(formattedDate)] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "User Handle:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(detection.user_handle || "N/A")] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Post URL:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(detection.post_url || "N/A")] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Evidence Hash:", bold: true })] })] }),
+                new TableCell({ children: [new Paragraph(hash || "N/A")] }),
+              ],
+            }),
+            new TableRow({
+              children: [
+                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Hash Status:", bold: true })] })] }),
+                new TableCell({ 
+                  children: [new Paragraph({
+                    children: [new TextRun({
+                      text: hasDuplicates ? "⚠ DUPLICATE DETECTED" : "✓ Unique Evidence",
+                      bold: true,
+                      color: hasDuplicates ? "DC2626" : "059669",
+                    })],
+                  })],
+                }),
+              ],
+            }),
+          ],
+        }),
+        new Paragraph({ text: "", spacing: { after: 200 } })
+      );
+
+      // Evidence Image
+      sections.push(
+        new Paragraph({
+          text: "EVIDENCE IMAGE",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 200, after: 200 },
+        })
+      );
+
+      if (imageData) {
+        sections.push(
+          new Paragraph({
+            children: [
+              new ImageRun({
+                data: imageData,
+                transformation: {
+                  width: 500,
+                  height: 350,
+                },
+                type: "jpg",
+              }),
+            ],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 200 },
+          })
+        );
+      } else {
+        sections.push(
+          new Paragraph({
+            children: [new TextRun({
+              text: "Evidence image unavailable",
+              italics: true,
+              color: "666666",
+            })],
+            spacing: { after: 200 },
+          })
+        );
+      }
+
+      // Case Highlights
+      sections.push(
+        new Paragraph({
+          text: "CASE HIGHLIGHTS",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 200, after: 200 },
+        }),
+        new Paragraph({
+          text: `• Priority level indicates enforcement urgency (${detection.priority}).`,
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: `• Risk level assessment: ${localRisk.riskLevel}.`,
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: `• Confidence level suggests ${confidenceLabel.toLowerCase()} model certainty.`,
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: `• Source platform flagged for monitored listings: ${detection.source}.`,
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: `• Location clustered within monitoring region: ${detection.location_name}.`,
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: `• Trust Score (${detection.trust_score ?? 0}) indicates ${detection.trust_score && detection.trust_score > 1 ? 'multiple matching reports' : 'single report'} for this species/location.`,
+          spacing: { after: 200 },
+        })
+      );
+
+      // Description
+      sections.push(
+        new Paragraph({
+          text: "DESCRIPTION",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 200, after: 200 },
+        }),
+        new Paragraph({
+          text: detection.description || "N/A",
+          spacing: { after: 200 },
+        })
+      );
+
+      // Duplicate Alert if applicable
+      if (hasDuplicates) {
+        sections.push(
+          new Paragraph({
+            text: "⚠ DUPLICATE EVIDENCE HASH ALERT",
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 200, after: 200 },
+          }),
+          new Paragraph({
+            children: [new TextRun({
+              text: `Identical evidence hash found in ${duplicates.length} other case(s). This indicates the EXACT SAME image is being used in multiple cases.`,
+              bold: true,
+              color: "DC2626",
+            })],
+            spacing: { after: 200 },
+          }),
+          new Paragraph({
+            children: [new TextRun({
+              text: "Matching Cases:",
+              bold: true,
+            })],
+            spacing: { after: 100 },
+          })
+        );
+
+        duplicates.forEach((dup, index) => {
+          sections.push(
+            new Paragraph({
+              text: `${index + 1}. Case ID: ${dup.id} - ${dup.animal_type}`,
+              spacing: { after: 50 },
+            }),
+            new Paragraph({
+              text: `   Location: ${dup.location_name}, Priority: ${dup.priority}`,
+              spacing: { after: 50 },
+            }),
+            new Paragraph({
+              text: `   Detected: ${new Date(dup.timestamp).toLocaleString()}`,
+              spacing: { after: 100 },
+            })
+          );
+        });
+
+        sections.push(
+          new Paragraph({
+            children: [new TextRun({
+              text: "⚠ CRITICAL WARNING: Duplicate evidence hashes severely compromise prosecution integrity. Malaysian courts require verified chain of custody and authentic evidence. IMMEDIATE INVESTIGATION RECOMMENDED.",
+              bold: true,
+              color: "DC2626",
+            })],
+            spacing: { after: 200 },
+          })
+        );
+      }
+
+      // Operational Notes
+      sections.push(
+        new Paragraph({
+          text: "OPERATIONAL NOTES",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 200, after: 200 },
+        }),
+        new Paragraph({
+          text: "• Preserve digital evidence and timestamps for chain of custody.",
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: "• Verify listing persistence and capture screenshots where possible.",
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: "• Cross-check with existing watchlists and repeat offenders.",
+          spacing: { after: hasDuplicates ? 100 : 200 },
+        })
+      );
+
+      if (hasDuplicates) {
+        sections.push(
+          new Paragraph({
+            children: [new TextRun({
+              text: "• ⚠ PRIORITY: Investigate duplicate evidence hash immediately.",
+              bold: true,
+              color: "DC2626",
+            })],
+            spacing: { after: 200 },
+          })
+        );
+      }
+
+      // Evidence Integrity
+      sections.push(
+        new Paragraph({
+          text: "EVIDENCE INTEGRITY",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 200, after: 200 },
+        }),
+        new Paragraph({
+          text: `SHA-256 Fingerprint: ${hash || "N/A"}`,
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: "Hashing ensures the evidence remains tamper-proof for Malaysian courts.",
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          children: [new TextRun({
+            text: hasDuplicates 
+              ? "⚠ ALERT: Evidence integrity compromised due to duplicate hash detection."
+              : "✓ Evidence hash is unique - no duplicates detected.",
+            bold: true,
+            color: hasDuplicates ? "DC2626" : "059669",
+          })],
+          spacing: { after: 200 },
+        })
+      );
+
+      // Evidence Timeline
+      sections.push(
+        new Paragraph({
+          text: "EVIDENCE TIMELINE",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 200, after: 200 },
+        }),
+        new Paragraph({
+          text: "1) Detection recorded and cataloged in monitoring queue.",
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: "2) Verification and risk assessment completed.",
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: "3) Case packaged for enforcement review and archival.",
+          spacing: { after: hasDuplicates ? 100 : 200 },
+        })
+      );
+
+      if (hasDuplicates) {
+        sections.push(
+          new Paragraph({
+            children: [new TextRun({
+              text: "4) ⚠ Duplicate hash detected - investigation required.",
+              bold: true,
+              color: "DC2626",
+            })],
+            spacing: { after: 200 },
+          })
+        );
+      }
+
+      // Risk Assessments
+      sections.push(
+        new Paragraph({
+          text: "LOCAL RISK SUMMARY",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 200, after: 200 },
+        }),
+        new Paragraph({
+          text: localRisk.summary,
+          spacing: { after: 100 },
+        }),
+        new Paragraph({
+          text: `Key Signals: ${localRisk.signals.join(", ")}.`,
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          text: "GEMINI RISK ASSESSMENT",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 200, after: 200 },
+        }),
+        new Paragraph({
+          text: aiSummary,
+          spacing: { after: 200 },
+        })
+      );
+
+      // Create document
+      const doc = new Document({
+        sections: [
+          {
+            properties: {},
+            children: sections,
+          },
+        ],
+      });
+
+      // Generate and download
+      const blob = await Packer.toBlob(doc);
+      downloadBlob(blob, `${reportContent.filename}.docx`);
+    } catch (error) {
+      console.error("Error generating Word document:", error);
+      // Fallback to HTML export if docx generation fails
+      const blob = new Blob([reportContent.html], { type: "application/msword" });
+      downloadBlob(blob, `${reportContent.filename}.doc`);
+    }
   };
 
   const handleDownloadPdf = async () => {
@@ -641,6 +1264,12 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     const aiSummary = resolveAiSummary(localRisk.summary);
     const confidenceLabel = detection.confidence >= 0.9 ? "Very High" : detection.confidence >= 0.75 ? "High" : detection.confidence >= 0.5 ? "Medium" : "Low";
 
+    // Check for duplicate hash
+    const duplicates = (allDetections || []).filter(
+      (d) => d.evidence_hash && d.evidence_hash === hash && d.id !== detection.id
+    );
+    const hasDuplicates = duplicates.length > 0;
+
     const ensureSpace = (height: number) => {
       if (y + height > pageHeight - margin) {
         doc.addPage();
@@ -649,23 +1278,34 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     };
 
     const addSectionTitle = (title: string) => {
-      ensureSpace(28);
+      ensureSpace(35);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.setTextColor(71, 85, 105);
+      doc.setFontSize(13);
+      doc.setTextColor(30, 41, 59);
       doc.text(title, margin, y);
-      y += 16;
-      doc.setDrawColor(226, 232, 240);
+      y += 20;
+      doc.setDrawColor(203, 213, 225);
       doc.line(margin, y, pageWidth - margin, y);
-      y += 14;
+      y += 16;
     };
 
-    const addParagraph = (text: string, fontSize = 11) => {
+    const addParagraph = (text: string, fontSize = 10, color = [15, 23, 42]) => {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(fontSize);
-      doc.setTextColor(15, 23, 42);
+      doc.setTextColor(color[0], color[1], color[2]);
       const lines = doc.splitTextToSize(text, pageWidth - margin * 2);
-      const lineHeight = fontSize + 6;
+      const lineHeight = fontSize + 5;
+      ensureSpace(lines.length * lineHeight);
+      doc.text(lines, margin, y);
+      y += lines.length * lineHeight + 6;
+    };
+
+    const addBoldParagraph = (text: string, fontSize = 10, color = [15, 23, 42]) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(fontSize);
+      doc.setTextColor(color[0], color[1], color[2]);
+      const lines = doc.splitTextToSize(text, pageWidth - margin * 2);
+      const lineHeight = fontSize + 5;
       ensureSpace(lines.length * lineHeight);
       doc.text(lines, margin, y);
       y += lines.length * lineHeight + 6;
@@ -674,7 +1314,7 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     const addImageSection = async (title: string, url: string) => {
       addSectionTitle(title);
       if (!url) {
-        addParagraph("N/A", 10);
+        addParagraph("Evidence image unavailable.", 10, [100, 116, 139]);
         return;
       }
       try {
@@ -682,108 +1322,213 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
         const imageProps = doc.getImageProperties(dataUrl);
         const maxWidth = pageWidth - margin * 2;
         const ratio = imageProps.height / imageProps.width;
-        const height = Math.min(260, maxWidth * ratio);
-        ensureSpace(height + 12);
+        const imgWidth = maxWidth;
+        const imgHeight = Math.min(300, maxWidth * ratio);
+        ensureSpace(imgHeight + 16);
+        
+        // Add a border around the image
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(1);
+        doc.rect(margin - 2, y - 2, imgWidth + 4, imgHeight + 4);
+        
         const format = dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
-        doc.addImage(dataUrl, format, margin, y, maxWidth, height);
-        y += height + 12;
+        doc.addImage(dataUrl, format, margin, y, imgWidth, imgHeight);
+        y += imgHeight + 20;
       } catch (err) {
-        addParagraph("Image unavailable.", 10);
+        addParagraph("Image could not be loaded.", 10, [239, 68, 68]);
       }
     };
 
     const addBullets = (items: string[]) => {
       items.forEach((item) => {
-        addParagraph(`- ${item}`, 10);
+        addParagraph(`• ${item}`, 10);
       });
     };
 
-    doc.setFillColor(15, 23, 42);
-    doc.rect(0, 0, pageWidth, 56, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(255, 255, 255);
-    doc.text("WILDSCAN Evidence Report", margin, 36);
-    doc.setFontSize(9);
-    doc.text(`Case ${detection.id}`, pageWidth - margin, 36, { align: "right" });
-
-    doc.setTextColor(15, 23, 42);
-    doc.setFontSize(10);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 70);
-
-    y = 92;
-    doc.setDrawColor(226, 232, 240);
-    doc.setFillColor(248, 250, 252);
-    doc.rect(margin, y, pageWidth - margin * 2, 108, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(4, 120, 87);
-    doc.text(`${detection.priority} Priority`, margin + 12, y + 18);
-    doc.setFontSize(10);
-    doc.setTextColor(15, 23, 42);
-
-    const meta = [
-      [`Case ID`, detection.id],
-      [`Species`, detection.animal_type],
-      [`Status`, detection.status || "Pending"],
-      [`Trust Score`, `${detection.trust_score ?? 0}`],
-      [`Confidence`, `${(detection.confidence * 100).toFixed(2)}% (${confidenceLabel})`],
-      [`Source`, detection.source],
-      [`Location`, detection.location_name],
-      [`Coordinates`, `${detection.lat.toFixed(6)}, ${detection.lng.toFixed(6)}`],
-      [`Detected At`, formattedDate],
-    ];
-
-    const colWidth = (pageWidth - margin * 2) / 2;
-    const rowHeight = 22;
-    meta.forEach((item, index) => {
-      const col = index % 2;
-      const row = Math.floor(index / 2);
-      const x = margin + 12 + col * colWidth;
-      const textY = y + 36 + row * rowHeight;
+    const addTableRow = (label: string, value: string, isLast = false) => {
+      ensureSpace(22);
+      doc.setFillColor(248, 250, 252);
+      doc.rect(margin, y, pageWidth - margin * 2, 22, "F");
+      
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
-      doc.text(`${item[0]}:`, x, textY);
+      doc.setTextColor(71, 85, 105);
+      doc.text(label, margin + 8, y + 14);
+      
       doc.setFont("helvetica", "normal");
-      doc.text(item[1], x + 60, textY);
+      doc.setTextColor(15, 23, 42);
+      const valueLines = doc.splitTextToSize(value, (pageWidth - margin * 2) / 2);
+      doc.text(valueLines, margin + 150, y + 14);
+      
+      if (!isLast) {
+        doc.setDrawColor(226, 232, 240);
+        doc.line(margin, y + 22, pageWidth - margin, y + 22);
+      }
+      
+      y += 22;
+    };
+
+    // Header - Formal Style
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, pageWidth, 60, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(255, 255, 255);
+    doc.text("WILDSCAN EVIDENCE REPORT", margin, 38);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin, 38, { align: "right" });
+
+    // Case ID Subtitle
+    doc.setFontSize(11);
+    doc.setTextColor(203, 213, 225);
+    doc.text(`Case ID: ${detection.id}`, margin, 52);
+
+    y = 80;
+
+    // Case Summary Section
+    addSectionTitle("CASE SUMMARY");
+    
+    ensureSpace(360);
+    const summaryData = [
+      ["Case ID", detection.id],
+      ["Case Name", detection.case_name || "N/A"],
+      ["Species", detection.animal_type],
+      ["Status", detection.status || "Pending"],
+      ["Priority", detection.priority],
+      ["Risk Level", localRisk.riskLevel],
+      ["Confidence", `${(detection.confidence * 100).toFixed(2)}% (${confidenceLabel})`],
+      ["Trust Score", `${detection.trust_score ?? 0}`],
+      ["Source/Market", detection.source],
+      ["Location", detection.location_name],
+      ["Coordinates", `${detection.lat.toFixed(6)}, ${detection.lng.toFixed(6)}`],
+      ["Detected At", formattedDate],
+      ["User Handle", detection.user_handle || "N/A"],
+      ["Post URL", detection.post_url ? (detection.post_url.length > 50 ? detection.post_url.substring(0, 50) + "..." : detection.post_url) : "N/A"],
+      ["Evidence Hash", hash ? (hash.length > 30 ? hash.substring(0, 30) + "..." : hash) : "N/A"],
+    ];
+
+    summaryData.forEach((row, index) => {
+      addTableRow(row[0], row[1], index === summaryData.length - 1);
     });
 
-    y += 130;
+    y += 10;
 
-    addSectionTitle("Case Highlights");
+    // Hash Status Badge
+    ensureSpace(25);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    if (hasDuplicates) {
+      doc.setFillColor(220, 38, 38);
+      doc.setTextColor(255, 255, 255);
+      doc.roundedRect(margin, y, 155, 22, 3, 3, "F");
+      doc.text("⚠ DUPLICATE DETECTED", margin + 10, y + 14);
+    } else {
+      doc.setFillColor(5, 150, 105);
+      doc.setTextColor(255, 255, 255);
+      doc.roundedRect(margin, y, 140, 22, 3, 3, "F");
+      doc.text("✓ Unique Evidence", margin + 10, y + 14);
+    }
+    y += 35;
+    doc.setTextColor(15, 23, 42);
+
+    // Evidence Image Section - Most Important
+    await addImageSection("EVIDENCE IMAGE", detection.image_url || "");
+
+    // Case Highlights
+    addSectionTitle("CASE HIGHLIGHTS");
     addBullets([
       `Priority level indicates enforcement urgency (${detection.priority}).`,
+      `Risk level assessment: ${localRisk.riskLevel}.`,
       `Confidence level suggests ${confidenceLabel.toLowerCase()} model certainty.`,
       `Source platform flagged for monitored listings: ${detection.source}.`,
       `Location clustered within monitoring region: ${detection.location_name}.`,
+      `Trust Score (${detection.trust_score ?? 0}) indicates ${detection.trust_score && detection.trust_score > 1 ? 'multiple matching reports' : 'single report'} for this species/location.`,
     ]);
 
-    addSectionTitle("Description");
+    // Description
+    addSectionTitle("DESCRIPTION");
     addParagraph(detection.description || "N/A");
 
-    await addImageSection("Evidence Image", detection.image_url || "");
+    // Duplicate Hash Alert Section
+    if (hasDuplicates) {
+      addSectionTitle("⚠ DUPLICATE EVIDENCE HASH ALERT");
+      ensureSpace(100);
+      
+      doc.setFillColor(254, 226, 226);
+      doc.setDrawColor(220, 38, 38);
+      doc.setLineWidth(2);
+      const alertStartY = y;
+      
+      addBoldParagraph(`Identical evidence hash found in ${duplicates.length} other case(s).`, 10, [153, 27, 27]);
+      addBoldParagraph("This indicates the EXACT SAME image is being used in multiple cases.", 10, [153, 27, 27]);
+      
+      y += 8;
+      addBoldParagraph("Matching Cases:", 10, [15, 23, 42]);
+      doc.setFont("helvetica", "normal");
+      
+      duplicates.forEach((dup, index) => {
+        addParagraph(`${index + 1}. Case ID: ${dup.id} - ${dup.animal_type}`, 9);
+        addParagraph(`   Location: ${dup.location_name}, Priority: ${dup.priority}`, 9);
+        addParagraph(`   Detected: ${new Date(dup.timestamp).toLocaleString()}`, 9);
+      });
+      
+      y += 8;
+      addBoldParagraph("⚠ CRITICAL WARNING: Duplicate evidence hashes severely compromise prosecution integrity.", 10, [153, 27, 27]);
+      addBoldParagraph("IMMEDIATE INVESTIGATION RECOMMENDED.", 10, [153, 27, 27]);
+      
+      const alertHeight = y - alertStartY;
+      doc.rect(margin - 5, alertStartY - 5, pageWidth - margin * 2 + 10, alertHeight + 10);
+      
+      doc.setTextColor(15, 23, 42);
+      doc.setLineWidth(0.5);
+    }
 
-    addSectionTitle("Operational Notes");
+    // Operational Notes
+    addSectionTitle("OPERATIONAL NOTES");
     addBullets([
       "Preserve digital evidence and timestamps for chain of custody.",
       "Verify listing persistence and capture screenshots where possible.",
       "Cross-check with existing watchlists and repeat offenders.",
+      ...(hasDuplicates ? ["⚠ PRIORITY: Investigate duplicate evidence hash immediately."] : []),
     ]);
 
-    addSectionTitle("Evidence Integrity");
-    addParagraph(`SHA-256 Fingerprint: ${hash || "N/A"}`, 10);
-    addParagraph("Hashing ensures the evidence remains tamper-proof for Malaysian courts.", 10);
+    // Evidence Integrity
+    addSectionTitle("EVIDENCE INTEGRITY");
+    addParagraph(`SHA-256 Fingerprint: ${hash || "N/A"}`);
+    addParagraph("Hashing ensures the evidence remains tamper-proof for Malaysian courts.");
+    if (hasDuplicates) {
+      addBoldParagraph("⚠ ALERT: Evidence integrity compromised due to duplicate hash detection.", 10, [220, 38, 38]);
+    } else {
+      addBoldParagraph("✓ Evidence hash is unique - no duplicates detected.", 10, [5, 150, 105]);
+    }
 
-    addSectionTitle("Evidence Timeline");
-    addParagraph("1) Detection recorded and cataloged in monitoring queue.");
-    addParagraph("2) Verification and risk assessment completed.");
-    addParagraph("3) Case packaged for enforcement review and archival.");
+    // Evidence Timeline
+    addSectionTitle("EVIDENCE TIMELINE");
+    addParagraph("1. Detection recorded and cataloged in monitoring queue.");
+    addParagraph("2. Verification and risk assessment completed.");
+    addParagraph("3. Case packaged for enforcement review and archival.");
+    if (hasDuplicates) {
+      addBoldParagraph("4. ⚠ Duplicate hash detected - investigation required.", 10, [220, 38, 38]);
+    }
 
-    addSectionTitle("Local Risk Summary");
-    addParagraph(localRisk.summary, 10);
+    // Risk Assessments
+    addSectionTitle("LOCAL RISK SUMMARY");
+    addParagraph(localRisk.summary);
+    addParagraph(`Key Signals: ${localRisk.signals.join(", ")}.`);
 
-    addSectionTitle("Gemini Risk Assessment");
-    addParagraph(aiSummary, 10);
+    addSectionTitle("GEMINI RISK ASSESSMENT");
+    addParagraph(aiSummary);
+
+    // Footer
+    const pageCount = doc.internal.pages.length - 1;
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 20, { align: "center" });
+      doc.text("WILDSCAN Wildlife Enforcement Dashboard", pageWidth - margin, pageHeight - 20, { align: "right" });
+    }
 
     doc.save(`${reportContent.filename}.pdf`);
   };
@@ -821,68 +1566,101 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
 
   return (
     <div className="flex flex-col h-full relative">
-      {/* Report Generation Overlay */}
+      {/* Report Generation Overlay with Glassmorphism */}
       {(isGenerating || reportReady) && (
-        <div className="absolute inset-0 z-50 bg-slate-950 flex flex-col p-8 font-mono overflow-hidden">
-          <div className="flex items-center gap-2 text-emerald-500 mb-6">
-            <Activity size={20} className="animate-pulse" />
-            <h3 className="text-sm font-bold uppercase tracking-widest">
-              {reportReady ? "Prosecution Report Ready" : "Generating Prosecution Report"}
-            </h3>
-          </div>
-          {!reportReady ? (
-            <>
-              <div className="flex-1 space-y-2 text-[10px] text-emerald-400/80 overflow-y-auto">
-                {reportLogs.map((log, i) => (
-                  <div key={i} className="animate-in slide-in-from-left duration-300">
-                    {log}
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-8 font-mono overflow-hidden">
+          {/* Glassmorphism Background Overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 via-slate-950/90 to-black/95 backdrop-blur-xl"></div>
+          
+          {/* Glassmorphism Card */}
+          <div className="relative w-full max-w-3xl bg-slate-900/40 backdrop-blur-2xl border border-emerald-500/30 rounded-2xl shadow-[0_8px_32px_0_rgba(16,185,129,0.15)] p-8 overflow-hidden">
+            {/* Gradient Accents */}
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-500 to-transparent opacity-50"></div>
+            <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-500 to-transparent opacity-50"></div>
+            
+            {/* Cancel Icon */}
+            {reportReady && (
+              <button
+                onClick={() => setReportReady(false)}
+                className="absolute top-4 right-4 z-20 p-2 rounded-lg bg-slate-800/60 backdrop-blur-sm border border-slate-700/50 text-slate-400 hover:text-emerald-400 hover:bg-slate-700/60 hover:border-emerald-500/30 transition-all duration-200 group"
+                aria-label="Close"
+              >
+                <X size={18} className="group-hover:rotate-90 transition-transform duration-200" />
+              </button>
+            )}
+            
+            {/* Content */}
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 text-emerald-400 mb-6">
+                <Activity size={20} className="animate-pulse" />
+                <h3 className="text-sm font-bold uppercase tracking-widest">
+                  {reportReady ? "Prosecution Report Ready" : "Generating Prosecution Report"}
+                </h3>
+              </div>
+              
+              {!reportReady ? (
+                <>
+                  <div className="flex-1 space-y-2 text-[10px] text-emerald-400/80 overflow-y-auto max-h-96 bg-slate-950/30 backdrop-blur-sm rounded-lg p-4 border border-emerald-500/10">
+                    {reportLogs.map((log, i) => (
+                      <div key={i} className="animate-in slide-in-from-left duration-300 py-1">
+                        {log}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="mt-4 pt-4 border-t border-emerald-500/20">
-                <div className="w-full h-1 bg-slate-900 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 animate-[progress_5s_linear_infinite]"></div>
+                  <div className="mt-4 pt-4 border-t border-emerald-500/20">
+                    <div className="w-full h-2 bg-slate-950/50 backdrop-blur-sm rounded-full overflow-hidden border border-emerald-500/20">
+                      <div className="h-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-500 animate-[progress_5s_linear_infinite] shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col gap-4">
+                  <div className="text-xs text-slate-300 leading-relaxed bg-gradient-to-br from-emerald-500/10 via-slate-900/40 to-slate-900/20 backdrop-blur-md border border-emerald-500/30 p-6 rounded-xl shadow-[0_4px_16px_0_rgba(16,185,129,0.1)]">
+                    <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono font-bold">Report Summary</div>
+                    <div className="mt-2 text-slate-200">
+                      Case {detection.id} prepared with evidence highlights and AI risk assessment.
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                      <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-lg px-3 py-2 shadow-sm">
+                        <span className="text-slate-400">Priority:</span> <span className="text-emerald-300 font-semibold">{detection.priority}</span>
+                      </div>
+                      <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-lg px-3 py-2 shadow-sm">
+                        <span className="text-slate-400">Confidence:</span> <span className="text-emerald-300 font-semibold">{(detection.confidence * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-lg px-3 py-2 shadow-sm">
+                        <span className="text-slate-400">Location:</span> <span className="text-emerald-300 font-semibold">{detection.location_name}</span>
+                      </div>
+                      <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-lg px-3 py-2 shadow-sm">
+                        <span className="text-slate-400">Source:</span> <span className="text-emerald-300 font-semibold">{detection.source}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleDownloadPdf}
+                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs shadow-[0_4px_16px_0_rgba(16,185,129,0.3)] hover:shadow-[0_6px_20px_0_rgba(16,185,129,0.4)] transition-all duration-200 active:scale-95"
+                    >
+                      <Download size={14} />
+                      Download PDF
+                    </button>
+                    <button
+                      onClick={handleDownloadWord}
+                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-800/60 backdrop-blur-sm text-slate-100 font-bold text-xs border border-slate-700/50 hover:bg-slate-700/60 hover:border-slate-600 shadow-sm hover:shadow-md transition-all duration-200 active:scale-95"
+                    >
+                      <Download size={14} />
+                      Download Word
+                    </button>
+                    <button
+                      onClick={() => setReportReady(false)}
+                      className="ml-auto text-[10px] uppercase tracking-widest text-slate-400 hover:text-emerald-400 transition-colors px-4 py-2 rounded-lg hover:bg-slate-800/30 backdrop-blur-sm"
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex flex-col gap-4">
-              <div className="text-xs text-slate-300 leading-relaxed bg-gradient-to-r from-emerald-500/10 via-slate-900/70 to-slate-900/40 border border-emerald-500/30 p-4 rounded-lg">
-                <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono">Report Summary</div>
-                <div className="mt-2 text-slate-200">
-                  Case {detection.id} prepared with evidence highlights and AI risk assessment.
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
-                  <div className="bg-slate-900/60 border border-slate-800 rounded px-2 py-1">Priority: {detection.priority}</div>
-                  <div className="bg-slate-900/60 border border-slate-800 rounded px-2 py-1">Confidence: {(detection.confidence * 100).toFixed(0)}%</div>
-                  <div className="bg-slate-900/60 border border-slate-800 rounded px-2 py-1">Location: {detection.location_name}</div>
-                  <div className="bg-slate-900/60 border border-slate-800 rounded px-2 py-1">Source: {detection.source}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleDownloadPdf}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-slate-950 font-bold text-xs"
-                >
-                  <Download size={14} />
-                  Download PDF
-                </button>
-                <button
-                  onClick={handleDownloadWord}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-slate-100 font-bold text-xs border border-slate-700"
-                >
-                  <Download size={14} />
-                  Download Word
-                </button>
-                <button
-                  onClick={() => setReportReady(false)}
-                  className="ml-auto text-[10px] uppercase tracking-widest text-slate-400 hover:text-emerald-400"
-                >
-                  Close
-                </button>
-              </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -970,6 +1748,32 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
             </div>
             <div className="mt-1 text-[10px] text-emerald-400">Click to see matching cases</div>
           </button>
+        </div>
+
+        <div className="bg-slate-800/30 p-3 rounded-lg border border-slate-800">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-slate-500 font-mono uppercase">Quick Action</p>
+            <span className="text-[10px] text-emerald-400 font-mono uppercase">Send to Ranger</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleSendRangerWhatsApp}
+              className="px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-700 text-slate-400 text-[10px] font-mono uppercase tracking-widest hover:bg-emerald-500/20 hover:border-emerald-500/40 hover:text-emerald-200 transition-colors"
+            >
+              WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={handleSendRangerEmail}
+              className="px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-700 text-slate-400 text-[10px] font-mono uppercase tracking-widest hover:border-emerald-500/40 hover:text-emerald-300 transition-colors"
+            >
+              Email
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500 mt-2">
+            Prefilled with case ID, species, and coordinates.
+          </p>
         </div>
 
         <div className="bg-slate-800/30 p-3 rounded-lg border border-slate-800">
