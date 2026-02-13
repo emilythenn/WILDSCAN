@@ -59,7 +59,7 @@ Evidence Collection:
 
 Stores raw submissions such as screenshots or images.
 
-Fields typically include:
+Fields include:
 - fileUrl (Cloudinary image URL)
 - platformSource
 - uploadedAt
