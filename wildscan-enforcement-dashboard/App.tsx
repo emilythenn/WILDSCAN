@@ -742,10 +742,6 @@ const App: React.FC = () => {
     }
   }, [filteredDetections, selectedDetection?.id]);
 
-  const handleSelectDetection = useCallback((detection: Detection) => {
-    setSelectedDetection(detection);
-  }, []);
-
   const handleToggleSeverity = useCallback((level: Detection["priority"]) => {
     setSeverityFilter([level]);
   }, [allPriorities]);
@@ -774,7 +770,6 @@ const App: React.FC = () => {
       window.localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   }, []);
-
 
   const handleStatusChange = useCallback((caseId: string, status: Detection["status"] | undefined) => {
     setCaseStatusById((prev) => {
@@ -819,6 +814,22 @@ const App: React.FC = () => {
       console.error("Failed to update case status on case:", error);
     });
   }, []);
+
+  const handleSelectDetection = useCallback((detection: Detection) => {
+    setSelectedDetection(detection);
+  }, []);
+
+  const handleMarkerClick = useCallback((detection: Detection) => {
+    setSelectedDetection(detection);
+    const statusOrder: Detection["status"][] = ["Pending", "Investigating", "Resolved"];
+    const currentStatus = detection.status && statusOrder.includes(detection.status)
+      ? detection.status
+      : "Pending";
+    const currentIndex = statusOrder.indexOf(currentStatus);
+    const nextIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
+    const nextStatus = statusOrder[nextIndex % statusOrder.length];
+    handleStatusChange(detection.id, nextStatus);
+  }, [handleStatusChange]);
 
   if (!isAuthenticated) {
     return (
@@ -942,7 +953,7 @@ const App: React.FC = () => {
                <CrimeMap 
                 detections={detections} 
                 selectedDetection={selectedDetection}
-                onMarkerClick={handleSelectDetection}
+                onMarkerClick={handleMarkerClick}
                />
                
                {/* HUD Overlays */}
