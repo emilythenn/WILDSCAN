@@ -33,6 +33,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
   const [duplicateCases, setDuplicateCases] = useState<Detection[]>([]);
   const [duplicateReasons, setDuplicateReasons] = useState<string[]>([]);
   const [isAnalyzingDuplicate, setIsAnalyzingDuplicate] = useState(false);
+  const [localStatus, setLocalStatus] = useState<Detection["status"] | undefined>(detection?.status);
 
   const formatTimestamp = (timestamp: Detection["timestamp"]) => {
     if (!timestamp) return "N/A";
@@ -363,6 +364,10 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
   }, [detection]);
 
   useEffect(() => {
+    setLocalStatus(detection?.status);
+  }, [detection?.id, detection?.status]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const buildHash = async () => {
@@ -477,6 +482,8 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
   }
 
   const formattedDate = formatTimestamp(detection.timestamp);
+  const formattedCreatedAt = detection.created_at ? formatTimestamp(detection.created_at) : formattedDate;
+  const formattedAiScannedAt = detection.ai_scanned_at ? formatTimestamp(detection.ai_scanned_at) : "N/A";
   const priorityIconColor: Record<Detection["priority"], string> = {
     High: "text-red-400",
     Medium: "text-amber-400",
@@ -1721,7 +1728,7 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
             <p className="text-[10px] text-slate-500 font-mono uppercase mb-1">Marketplace</p>
             <div className="flex items-center gap-2">
                <Share2 size={16} className="text-emerald-400" />
-               <span className="text-sm font-semibold truncate">{detection.source}</span>
+               <span className="text-sm font-semibold truncate">{detection.platform_source || detection.source}</span>
             </div>
           </div>
           <div className="bg-slate-800/30 p-3 rounded-lg border border-slate-800 hover:border-emerald-500/30 transition-colors">
@@ -1785,18 +1792,88 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                 type="button"
                 onClick={() => {
                   if (!detection) return;
-                  const nextStatus = detection.status === status ? undefined : status;
+                  const nextStatus = localStatus === status ? undefined : status;
+                  setLocalStatus(nextStatus);
                   onStatusChange?.(detection.id, nextStatus);
                 }}
                 className={`px-2 py-1 rounded border transition-all ${
-                  detection.status === status
-                    ? "bg-green-500/20 border-green-500 text-green-300"
+                  localStatus === status
+                    ? "bg-emerald-500/30 border-emerald-400 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
                     : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600"
                 }`}
               >
                 {status}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-slate-900/70 via-slate-900/40 to-emerald-950/20 p-4 rounded-xl border border-slate-800/80 shadow-[0_10px_30px_rgba(15,23,42,0.35)]">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest">Case Metadata</p>
+            <span className="text-[9px] text-emerald-400/80 font-mono uppercase tracking-[0.3em]">Live</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Detected Species</span>
+              <div className="mt-1 text-slate-100 font-semibold">
+                {detection.species_detected || detection.detected_species_name || detection.animal_type || "N/A"}
+              </div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Platform Source</span>
+              <div className="mt-1 text-slate-100 font-semibold">
+                {detection.platform_source || detection.source || "N/A"}
+              </div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Location (State)</span>
+              <div className="mt-1 text-slate-100 font-semibold">{detection.location_name || "Unknown"}</div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Priority</span>
+              <div className="mt-1">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono uppercase border ${priorityBadgeClass[detection.priority]}`}>
+                  {detection.priority}
+                </span>
+              </div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">AI Scanned At</span>
+              <div className="mt-1 text-slate-200">{formattedAiScannedAt}</div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Created At</span>
+              <div className="mt-1 text-slate-200">{formattedCreatedAt}</div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Confidence Score</span>
+              <div className="mt-1 text-slate-100 font-semibold">
+                {((detection.confidence_score ?? detection.confidence) * 100).toFixed(0)}%
+              </div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Risk Score</span>
+              <div className="mt-1 text-slate-100 font-semibold">
+                {typeof detection.risk_score === "number" ? detection.risk_score.toFixed(2) : "N/A"}
+              </div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Detected Illegal Product</span>
+              <div className="mt-1 text-slate-200">{detection.detected_illegal_product || "Unknown"}</div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Source</span>
+              <div className="mt-1 text-slate-200">{detection.source || "N/A"}</div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Evidence Summary</span>
+              <div className="mt-1 text-slate-200">{detection.reason_summary || "N/A"}</div>
+            </div>
+            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3 col-span-2">
+              <span className="text-[10px] text-slate-500 font-mono uppercase">Reason</span>
+              <div className="mt-1 text-slate-200 leading-relaxed break-words">{detection.reason || "N/A"}</div>
+            </div>
           </div>
         </div>
 

@@ -12,6 +12,7 @@ import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, serverT
 import { db } from "./firebase";
 
 const AUTH_STORAGE_KEY = "wildscan_dashboard_auth";
+const DEFAULT_MAP_CENTER = { lat: 4.2105, lng: 101.9758 };
 
 const App: React.FC = () => {
   const loginEmail = import.meta.env.VITE_LOGIN_EMAIL ?? "";
@@ -40,6 +41,8 @@ const App: React.FC = () => {
   const [evidenceByCase, setEvidenceByCase] = useState<Record<string, { fileUrl: string; platformSource?: string; aiSummary?: string; hash?: string }>>({});
   const [caseStatusById, setCaseStatusById] = useState<Record<string, Detection["status"]>>({});
   const [readStateByCase, setReadStateByCase] = useState<Record<string, boolean>>({});
+  const [resolvedLocationsById, setResolvedLocationsById] = useState<Record<string, string>>({});
+  const resolvingLocationRef = useRef<Set<string>>(new Set());
 
 
   const normalizePriority = (value?: string): Detection["priority"] => {
@@ -62,13 +65,18 @@ const App: React.FC = () => {
     if (typeof data?.location === "string") return data.location;
 
     const location = data?.location ?? {};
-    const explicitName = location.name || data.location_name || data.locationName;
+    const explicitName = location.name || data.location_name || data.locationName || data.state || data.location_state || data.locationState;
     if (explicitName) return explicitName as string;
 
     const parts = [
       location.city,
       location.district,
       location.state,
+      location.state_name,
+      location.stateName,
+      location.region,
+      location.region_name,
+      location.regionName,
       location.province,
       location.country,
     ].filter((value) => typeof value === "string" && value.trim().length > 0);
@@ -76,8 +84,42 @@ const App: React.FC = () => {
     return parts.length > 0 ? parts.join(", ") : "";
   };
 
+  const isUnknownLocation = (value?: string) => {
+    if (!value) return true;
+    const normalized = value.trim().toLowerCase();
+    return normalized.length === 0 || normalized === "unknown" || normalized === "unknown location" || normalized === "n/a";
+  };
+
+  const extractStateFromGeocode = (result: any) => {
+    const components = result?.address_components;
+    if (!Array.isArray(components)) return "";
+    const stateComponent = components.find((component: any) =>
+      Array.isArray(component?.types) && component.types.includes("administrative_area_level_1")
+    );
+    if (stateComponent?.long_name) return stateComponent.long_name as string;
+    return "";
+  };
+
+  const toIsoString = (value: any) => {
+    if (!value) return undefined;
+    if (typeof value === "string") return value;
+    if (typeof value?.toDate === "function") return value.toDate().toISOString();
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === "number") return new Date(value).toISOString();
+    return undefined;
+  };
+
+  const toNumber = (value: any) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
+  };
+
   const buildTrustKey = (data: any) => {
-    const species = (data?.speciesDetected || data?.animal_type || data?.caseName || data?.case_name || "").toString().trim().toLowerCase();
+    const species = (data?.detectedSpecies || data?.detected_species || data?.speciesDetected || data?.species_detected || data?.detectedSpeciesName || data?.detected_species_name || data?.animal_type || data?.caseName || data?.case_name || "").toString().trim().toLowerCase();
     const locationName = resolveLocationName(data).toString().trim().toLowerCase();
     if (!species && !locationName) return "";
     return `${species}||${locationName}`;
@@ -96,16 +138,15 @@ const App: React.FC = () => {
   const toDetection = (doc: { id: string; data: any }, evidence?: { fileUrl: string; platformSource?: string; aiSummary?: string; hash?: string }): Detection => {
     const data = doc.data ?? {};
     const location = data.location ?? {};
-    const createdAt = data.createdAt ?? data.timestamp ?? data.detectedAt ?? data.updatedAt;
-    let timestamp = createdAt;
-    if (timestamp && typeof timestamp.toDate === "function") {
-      timestamp = timestamp.toDate().toISOString();
-    } else if (!timestamp) {
-      timestamp = new Date().toISOString();
-    }
+    const createdAtRaw = data.createdAt ?? data.createAt ?? data.created_at ?? data.timestamp ?? data.detectedAt ?? data.updatedAt;
+    const aiScannedAtRaw = data.aiScannedAt ?? data.ai_scanned_at ?? data.aiScanAt ?? data.ai_scan_at ?? data.scannedAt ?? data.scanned_at;
+    const createdAt = toIsoString(createdAtRaw) ?? new Date().toISOString();
+    const aiScannedAt = toIsoString(aiScannedAtRaw);
 
     const confidence = typeof data.confidenceScore === "number"
       ? data.confidenceScore
+      : typeof data.confidence_score === "number"
+        ? data.confidence_score
       : typeof data.confidence === "number"
         ? data.confidence
         : 0;
@@ -114,21 +155,62 @@ const App: React.FC = () => {
     const trustKey = buildTrustKey(data);
     const trustScore = trustKey ? trustScoreByKey[trustKey] || 0 : 0;
 
+    const resolvedLocationName = resolvedLocationsById[doc.id];
+
+    const lat = toNumber(location.lat)
+      ?? toNumber(location.latitude)
+      ?? toNumber(location._lat)
+      ?? toNumber(location.lat_value)
+      ?? toNumber(location?.geopoint?.latitude)
+      ?? toNumber(data.lat)
+      ?? toNumber(data.latitude)
+      ?? toNumber(data.location?.latitude)
+      ?? toNumber(data.location?.lat)
+      ?? toNumber(data.lat_value)
+      ?? DEFAULT_MAP_CENTER.lat;
+    const lng = toNumber(location.lng)
+      ?? toNumber(location.longitude)
+      ?? toNumber(location.long)
+      ?? toNumber(location.lon)
+      ?? toNumber(location._long)
+      ?? toNumber(location.lng_value)
+      ?? toNumber(location?.geopoint?.longitude)
+      ?? toNumber(data.lng)
+      ?? toNumber(data.longitude)
+      ?? toNumber(data.long)
+      ?? toNumber(data.lon)
+      ?? toNumber(data.location?.longitude)
+      ?? toNumber(data.location?.lng)
+      ?? toNumber(data.location?.long)
+      ?? toNumber(data.location?.lon)
+      ?? toNumber(data.lng_value)
+      ?? DEFAULT_MAP_CENTER.lng;
+
     return {
       id: doc.id,
-      animal_type: data.speciesDetected || data.animal_type || data.caseName || data.case_name || "",
+      animal_type: data.detectedSpecies || data.detected_species || data.speciesDetected || data.species_detected || data.detectedSpeciesName || data.detected_species_name || data.animal_type || data.caseName || data.case_name || "",
       case_name: data.caseName || data.case_name || "",
-      source: data.source || data.platformSource || evidence?.platformSource || "",
+      source: data.source || data.platformSource || data.platform_source || evidence?.platformSource || "",
+      platform_source: data.platformSource || data.platform_source || evidence?.platformSource || data.source || "",
       image_url: evidence?.fileUrl || data.image_url || data.imageUrl || "",
-      lat: typeof location.lat === "number" ? location.lat : typeof data.lat === "number" ? data.lat : 0,
-      lng: typeof location.lng === "number" ? location.lng : typeof data.lng === "number" ? data.lng : 0,
-      timestamp,
+      lat,
+      lng,
+      timestamp: createdAt,
       priority: normalizePriority(data.priority),
       confidence,
-      location_name: resolveLocationName(data),
+      confidence_score: confidence,
+      location_name: resolvedLocationName || resolveLocationName(data),
+      species_detected: data.detectedSpecies || data.detected_species || data.speciesDetected || data.species_detected || data.detectedSpeciesName || data.detected_species_name || "",
+      detected_species_name: data.detectedSpeciesName || data.detected_species_name || data.detectedSpecies || data.detected_species || data.speciesDetected || data.species_detected || "",
+      detected_illegal_product: data.detectedIllegalProduct || data.detected_illegal_product || data.illegalProduct || data.illegal_product || "",
+      ai_scanned_at: aiScannedAt,
+      created_at: createdAt,
+      reason_summary: data.reasonSummary || data.reason_summary || data.summary_reason || "",
+      reason: data.reason || data.reasons || data.reasonText || "",
+      risk_score: typeof data.riskScore === "number" ? data.riskScore : typeof data.risk_score === "number" ? data.risk_score : undefined,
       user_handle: data.user_handle,
       post_url: data.post_url,
-      description: data.description || data.summary || evidence?.aiSummary || data.status || "",
+      description: data.description || data.summary || data.reasonSummary || data.reason_summary || evidence?.aiSummary || data.status || "",
       status,
       evidence_hash: evidence?.hash || "",
       trust_score: trustScore,
@@ -262,7 +344,75 @@ const App: React.FC = () => {
   useEffect(() => {
     const liveDetections = caseDocs.map((doc) => toDetection(doc, evidenceByCase[doc.id]));
     setDetections(liveDetections);
-  }, [caseDocs, evidenceByCase, caseStatusById]);
+  }, [caseDocs, evidenceByCase, caseStatusById, resolvedLocationsById]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (!db) return;
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+    if (!apiKey) return;
+
+    const candidates = caseDocs.filter((doc) => {
+      const data = doc.data ?? {};
+      const locationName = resolveLocationName(data);
+      const hasResolved = !!resolvedLocationsById[doc.id];
+      if (!isUnknownLocation(locationName) || hasResolved) return false;
+      const location = data.location ?? {};
+      const lat = typeof location.lat === "number" ? location.lat : typeof data.lat === "number" ? data.lat : null;
+      const lng = typeof location.lng === "number" ? location.lng : typeof data.lng === "number" ? data.lng : null;
+      if (typeof lat !== "number" || typeof lng !== "number") return false;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+      if (resolvingLocationRef.current.has(doc.id)) return false;
+      return true;
+    });
+
+    if (candidates.length === 0) return;
+
+    candidates.forEach(async (docItem) => {
+      resolvingLocationRef.current.add(docItem.id);
+      const data = docItem.data ?? {};
+      const location = data.location ?? {};
+      const lat = typeof location.lat === "number" ? location.lat : typeof data.lat === "number" ? data.lat : null;
+      const lng = typeof location.lng === "number" ? location.lng : typeof data.lng === "number" ? data.lng : null;
+      if (typeof lat !== "number" || typeof lng !== "number") {
+        resolvingLocationRef.current.delete(docItem.id);
+        return;
+      }
+
+      try {
+        const endpoint = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
+        const response = await fetch(endpoint);
+        if (!response.ok) {
+          throw new Error(`Geocoding HTTP ${response.status}`);
+        }
+        const payload = await response.json();
+        const firstResult = Array.isArray(payload?.results) ? payload.results[0] : null;
+        const stateName = extractStateFromGeocode(firstResult);
+        if (!stateName) {
+          resolvingLocationRef.current.delete(docItem.id);
+          return;
+        }
+
+        setResolvedLocationsById((prev) => ({ ...prev, [docItem.id]: stateName }));
+        await setDoc(
+          doc(db, "cases", docItem.id),
+          {
+            location_name: stateName,
+            locationState: stateName,
+            state: stateName,
+            geoResolvedAt: serverTimestamp(),
+            geoResolvedSource: "google_maps_reverse_geocode",
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        console.error("Failed to reverse geocode location:", error);
+      } finally {
+        resolvingLocationRef.current.delete(docItem.id);
+      }
+    });
+  }, [caseDocs, db, isAuthenticated, resolvedLocationsById]);
 
   const availableSources = useMemo(() => {
     return Array.from(new Set(detections.map((d) => d.source))).sort();
@@ -637,14 +787,16 @@ const App: React.FC = () => {
 
     if (!db) return;
     const statusDoc = doc(db, CASE_STATUS_COLLECTION, caseId);
+    const caseDoc = doc(db, "cases", caseId);
     if (!status) {
       deleteDoc(statusDoc).catch((error) => {
         console.error("Failed to clear case status:", error);
       });
 
-      updateDoc(
-        doc(db, "cases", caseId),
-        { status: deleteField(), statusDate: deleteField(), updatedAt: serverTimestamp() }
+      setDoc(
+        caseDoc,
+        { status: deleteField(), statusDate: deleteField(), updatedAt: serverTimestamp() },
+        { merge: true }
       ).catch((error) => {
         console.error("Failed to reset case status on case:", error);
       });
@@ -659,7 +811,11 @@ const App: React.FC = () => {
       console.error("Failed to save case status:", error);
     });
 
-    updateDoc(doc(db, "cases", caseId), { status, statusDate: serverTimestamp(), updatedAt: serverTimestamp() }).catch((error) => {
+    setDoc(
+      caseDoc,
+      { status, statusDate: serverTimestamp(), updatedAt: serverTimestamp() },
+      { merge: true }
+    ).catch((error) => {
       console.error("Failed to update case status on case:", error);
     });
   }, []);
@@ -784,7 +940,7 @@ const App: React.FC = () => {
             {/* Map Area */}
             <div className="flex-1 min-h-[600px] relative bg-slate-900 flex-shrink-0">
                <CrimeMap 
-                detections={filteredDetections} 
+                detections={detections} 
                 selectedDetection={selectedDetection}
                 onMarkerClick={handleSelectDetection}
                />

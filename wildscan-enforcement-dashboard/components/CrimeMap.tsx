@@ -53,6 +53,37 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     return mapDetections.filter((d) => Number.isFinite(d.lat) && Number.isFinite(d.lng));
   }, [mapDetections]);
 
+  const displayPositions = useMemo(() => {
+    const positions: Record<string, { lat: number; lng: number }> = {};
+    const groups = new Map<string, Detection[]>();
+    markerDetections.forEach((d) => {
+      const key = `${d.lat.toFixed(4)},${d.lng.toFixed(4)}`;
+      const existing = groups.get(key) || [];
+      existing.push(d);
+      groups.set(key, existing);
+    });
+
+    groups.forEach((items) => {
+      if (items.length === 1) {
+        const only = items[0];
+        positions[only.id] = { lat: only.lat, lng: only.lng };
+        return;
+      }
+
+      const goldenAngle = 2.399963229728653; // radians
+      items.forEach((item, index) => {
+        const radius = 0.001 + index * 0.00035;
+        const angle = index * goldenAngle;
+        positions[item.id] = {
+          lat: item.lat + Math.cos(angle) * radius,
+          lng: item.lng + Math.sin(angle) * radius,
+        };
+      });
+    });
+
+    return positions;
+  }, [markerDetections]);
+
   const getMarkerColor = useCallback((d: Detection) => {
     return d.priority === 'High' ? '#ef4444' : d.priority === 'Medium' ? '#f59e0b' : '#10b981';
   }, []);
@@ -209,6 +240,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     // Add or update markers
     markerDetections.forEach(d => {
       const isSelected = selectedDetection?.id === d.id;
+      const displayPosition = displayPositions[d.id] || { lat: d.lat, lng: d.lng };
       const markerIcon = {
         path: "M12 2C7.59 2 4 5.59 4 10c0 5.47 6.63 11.87 7.02 12.23a1.5 1.5 0 0 0 1.96 0C13.37 21.87 20 15.47 20 10c0-4.41-3.59-8-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z",
         fillColor: getMarkerColor(d),
@@ -220,7 +252,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
 
       if (!markersRef.current[d.id]) {
         const marker = new win.google.maps.Marker({
-          position: { lat: d.lat, lng: d.lng },
+          position: displayPosition,
           map: googleMap.current,
           title: d.animal_type,
           icon: markerIcon,
@@ -244,9 +276,10 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       } else {
         // Update color if priority changed (though mock data is static)
         markersRef.current[d.id].setIcon(markerIcon);
+        markersRef.current[d.id].setPosition(displayPosition);
       }
     });
-  }, [buildInfoWindowContent, currentLocation, getMarkerColor, markerDetections, onMarkerClick, selectedDetection?.id]);
+  }, [buildInfoWindowContent, currentLocation, displayPositions, getMarkerColor, markerDetections, onMarkerClick, selectedDetection?.id]);
 
   useEffect(() => {
     if (!currentLocation || !lastInfoRef.current || !infoWindowRef.current || !googleMap.current) return;
@@ -264,7 +297,8 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     if (selectedDetection) {
       // Zoom into selected case
       if (!Number.isFinite(selectedDetection.lat) || !Number.isFinite(selectedDetection.lng)) return;
-      googleMap.current.panTo({ lat: selectedDetection.lat, lng: selectedDetection.lng });
+      const focusPosition = displayPositions[selectedDetection.id] || { lat: selectedDetection.lat, lng: selectedDetection.lng };
+      googleMap.current.panTo(focusPosition);
       googleMap.current.setZoom(10);
       
       // Animate the selected marker
@@ -277,21 +311,23 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       // No selection - zoom out to show all markers (See All view)
       if (markerDetections.length === 1) {
         const only = markerDetections[0];
-        if (Number.isFinite(only.lat) && Number.isFinite(only.lng)) {
-          googleMap.current.setCenter({ lat: only.lat, lng: only.lng });
+        const onlyPosition = displayPositions[only.id] || { lat: only.lat, lng: only.lng };
+        if (Number.isFinite(onlyPosition.lat) && Number.isFinite(onlyPosition.lng)) {
+          googleMap.current.setCenter(onlyPosition);
           googleMap.current.setZoom(8);
         }
       } else {
         const bounds = new win.google.maps.LatLngBounds();
         markerDetections.forEach((d) => {
-          if (Number.isFinite(d.lat) && Number.isFinite(d.lng)) {
-            bounds.extend(new win.google.maps.LatLng(d.lat, d.lng));
+          const markerPosition = displayPositions[d.id] || { lat: d.lat, lng: d.lng };
+          if (Number.isFinite(markerPosition.lat) && Number.isFinite(markerPosition.lng)) {
+            bounds.extend(new win.google.maps.LatLng(markerPosition.lat, markerPosition.lng));
           }
         });
         googleMap.current.fitBounds(bounds, 80);
       }
     }
-  }, [selectedDetection, markerDetections]);
+  }, [displayPositions, selectedDetection, markerDetections]);
 
   useEffect(() => {
     const win = window as any;
@@ -309,20 +345,22 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
 
     if (mapDetections.length === 1) {
       const only = mapDetections[0];
-      if (!Number.isFinite(only.lat) || !Number.isFinite(only.lng)) return;
-      googleMap.current.setCenter({ lat: only.lat, lng: only.lng });
+      const onlyPosition = displayPositions[only.id] || { lat: only.lat, lng: only.lng };
+      if (!Number.isFinite(onlyPosition.lat) || !Number.isFinite(onlyPosition.lng)) return;
+      googleMap.current.setCenter(onlyPosition);
       googleMap.current.setZoom(8);
       return;
     }
 
     const bounds = new win.google.maps.LatLngBounds();
     mapDetections.forEach((d) => {
-      if (!Number.isFinite(d.lat) || !Number.isFinite(d.lng)) return;
-      bounds.extend(new win.google.maps.LatLng(d.lat, d.lng));
+      const markerPosition = displayPositions[d.id] || { lat: d.lat, lng: d.lng };
+      if (!Number.isFinite(markerPosition.lat) || !Number.isFinite(markerPosition.lng)) return;
+      bounds.extend(new win.google.maps.LatLng(markerPosition.lat, markerPosition.lng));
     });
 
     googleMap.current.fitBounds(bounds, 80);
-  }, [mapDetections, selectedDetection]);
+  }, [displayPositions, mapDetections, selectedDetection]);
 
   const buildRoute = useCallback((origin: { lat: number; lng: number } | null) => {
     const win = window as any;
@@ -475,6 +513,22 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     setGuidanceStatus("Guidance stopped.");
   }, []);
 
+  const clearRoute = useCallback(() => {
+    stopGuidance();
+    setRouteStatus("Route cleared.");
+    setRouteSummary(null);
+    setRouteSteps([]);
+    setCurrentStepIndex(0);
+    lastSpokenIndexRef.current = null;
+    setGuidanceStatus(null);
+    if (routeRendererRef.current) {
+      routeRendererRef.current.setMap(null);
+    }
+    if (originMarkerRef.current) {
+      originMarkerRef.current.setMap(null);
+    }
+  }, [stopGuidance]);
+
   const handleStartGuidance = useCallback(() => {
     if (!routeSteps.length) {
       setGuidanceStatus("Build a route first.");
@@ -578,20 +632,22 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
 
     if (markerDetections.length === 1) {
       const only = markerDetections[0];
-      if (!Number.isFinite(only.lat) || !Number.isFinite(only.lng)) return;
-      googleMap.current.setCenter({ lat: only.lat, lng: only.lng });
+      const onlyPosition = displayPositions[only.id] || { lat: only.lat, lng: only.lng };
+      if (!Number.isFinite(onlyPosition.lat) || !Number.isFinite(onlyPosition.lng)) return;
+      googleMap.current.setCenter(onlyPosition);
       googleMap.current.setZoom(8);
       return;
     }
 
     const bounds = new win.google.maps.LatLngBounds();
     markerDetections.forEach((d) => {
-      if (!Number.isFinite(d.lat) || !Number.isFinite(d.lng)) return;
-      bounds.extend(new win.google.maps.LatLng(d.lat, d.lng));
+      const markerPosition = displayPositions[d.id] || { lat: d.lat, lng: d.lng };
+      if (!Number.isFinite(markerPosition.lat) || !Number.isFinite(markerPosition.lng)) return;
+      bounds.extend(new win.google.maps.LatLng(markerPosition.lat, markerPosition.lng));
     });
 
     googleMap.current.fitBounds(bounds, 80);
-  }, [markerDetections]);
+  }, [displayPositions, markerDetections]);
 
   return (
     <div className="w-full h-full relative group">
@@ -640,6 +696,15 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
             >
               Optimize Route
             </button>
+            {(routeSummary || routeSteps.length > 0) && (
+              <button
+                type="button"
+                onClick={clearRoute}
+                className="mt-2 px-3 py-2 rounded border border-rose-400/60 bg-rose-500/10 text-[10px] font-mono uppercase tracking-widest text-rose-200 hover:border-rose-300 hover:text-rose-100"
+              >
+                Cancel Route
+              </button>
+            )}
             <button
               type="button"
               onClick={isGuiding ? stopGuidance : handleStartGuidance}
