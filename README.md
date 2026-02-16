@@ -6,7 +6,6 @@ WILDSCAN is a cross-platform Flutter mobile application designed to empower Mala
 
 By leveraging GPS automation, Cloudinary media hosting, and Firebase real-time synchronization, the system provides enforcement agencies (PERHILITAN) with tamper-proof, actionable intelligence.
 
----
 
 # 📂 Project Structure
 
@@ -17,22 +16,20 @@ WILDSCAN_REPORT_APP/
 ├── pubspec.yaml        # Project dependencies
 └── README.md           # This file
 
----
 
-# 🚀 Getting Started
+## 🚀 Getting Started
 
-## Prerequisites
+### Prerequisites
 
 - Flutter SDK `3.x` or higher
 - Android Studio (Android Emulator API 30+)
 - Xcode (macOS only for iOS Simulator)
 
-## Backend Services Required
+### Backend Services Required
 
 - Firebase Project with Firestore enabled
 - Cloudinary Account for media hosting
 
----
 
 ## Installation
 
@@ -55,7 +52,6 @@ flutter pub get
 flutter run
 ```
 
----
 
 # ✨ Key Features
 
@@ -66,15 +62,11 @@ flutter run
 - Server-side timestamp + unique Case Reference ID
 - Chain-of-custody metadata protection
 
----
-
 ## 📍 Smart Geolocation Intelligence
 
 - Automatic GPS coordinate capture
 - Reverse geocoding to Malaysian States
 - Manual UI override for low-signal environments
-
----
 
 ## 🛡️ Anonymous & Secure Reporting
 
@@ -82,14 +74,11 @@ flutter run
 - Real-time secure Firestore integration
 - Tamper-resistant cloud storage pipeline
 
----
-
 ## 🇲🇾 Malaysian Administrative Optimization
 
 - State-level categorization (13 States + 3 Federal Territories)
 - Data structured for enforcement heat-map analysis
 
----
 
 # 🔧 Tech Stack
 
@@ -99,7 +88,6 @@ flutter run
 - **Geolocator API** – High-accuracy GPS positioning  
 - **Nominatim API** – Reverse geocoding (State detection)
 
----
 
 # 📡 Architecture Overview
 
@@ -117,7 +105,6 @@ flutter run
 └─────────────────────────────────────────┘
 ```
 
----
 
 # 📊 Database Collections
 
@@ -136,7 +123,6 @@ flutter run
 - Associated Case ID
 - Metadata Hash
 
----
 
 # 🌍 Use Cases
 
@@ -144,8 +130,6 @@ flutter run
 2. Field Reporting (Poaching / Traps GPS lock)
 3. Market Evidence Collection
 4. Fraud Prevention via geolocation & timestamp validation
-
----
 
 # 🎯 Citizen Reporter Workflow
 
@@ -155,7 +139,6 @@ flutter run
 4. Submit Report  
 5. Receive Case Reference ID  
 
----
 
 # 🔐 Security Principles
 
@@ -164,13 +147,10 @@ flutter run
 - Case-ID traceability
 - Cloud-hosted media integrity
 
----
-
 # 📄 License
 
 WILDSCAN MALAYSIA 2026  
 For wildlife enforcement and conservation purposes only.
 
----
 
 > Empowering Malaysian citizens to protect biodiversity — one report at a time.
