@@ -39,7 +39,7 @@ WILDSCAN_REPORT_APP/
 ### 1️⃣ Clone the repository
 
 ```bash
-git clone -b flutter_report_feature https://github.com/emilythenn/WILDSCAN.git
+git clone -b flutter-report-feature https://github.com/emilythenn/WILDSCAN.git
 cd WILDSCAN
 ```
 
