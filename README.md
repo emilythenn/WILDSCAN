@@ -147,7 +147,7 @@ flutter run
 - Case-ID traceability
 - Cloud-hosted media integrity
 
-##📄 License
+## 📄 License
 
 WILDSCAN MALAYSIA 2026  
 For wildlife enforcement and conservation purposes only.
