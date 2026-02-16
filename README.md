@@ -31,22 +31,22 @@ WILDSCAN_REPORT_APP/
 - Cloudinary Account for media hosting
 
 
-## Installation
+### Installation
 
-### 1️⃣ Clone the repository
+#### 1️⃣ Clone the repository
 
 ```bash
 git clone -b flutter-report-feature https://github.com/emilythenn/WILDSCAN.git
 cd WILDSCAN
 ```
 
-### 2️⃣ Install dependencies
+#### 2️⃣ Install dependencies
 
 ```bash
 flutter pub get
 ```
 
-### 3️⃣ Run the application
+#### 3️⃣ Run the application
 
 ```bash
 flutter run
