@@ -140,7 +140,6 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
         <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
           ${priority ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(16, 185, 129, 0.55); background: rgba(16, 185, 129, 0.18); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #ffffff; font-weight: 700;">${priority}</span>` : ""}
           ${confidence ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.5); background: rgba(148, 163, 184, 0.15); font-size: 10px; color: #ffffff; font-weight: 700;">${confidence} Conf</span>` : ""}
-          ${status ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(34, 197, 94, 0.55); background: rgba(34, 197, 94, 0.18); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #ffffff; font-weight: 700;">${status}</span>` : ""}
         </div>
         <div style="color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;">Case Coords: ${coords}</div>
         <div style="margin-top: 6px; color: #ffffff; font-size: 11px; font-weight: 700;">Current Location: ${currentCoords}</div>

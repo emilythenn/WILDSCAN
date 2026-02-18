@@ -13,6 +13,7 @@ export interface Detection {
   confidence: number;
   confidence_score?: number;
   location_name: string;
+  fullAddress?: string;
   species_detected?: string;
   detected_species_name?: string;
   detected_illegal_product?: string;

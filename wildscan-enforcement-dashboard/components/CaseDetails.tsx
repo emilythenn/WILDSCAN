@@ -5,7 +5,7 @@ import { Clock, MapPin, Share2, FileText, ShieldCheck, Download, Link as LinkIco
 import { GoogleGenAI } from "@google/genai";
 import { jsPDF } from "jspdf";
 import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, UnderlineType, convertInchesToTwip, ImageRun, Table, TableCell, TableRow, WidthType, BorderStyle, Packer } from "docx";
-import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 interface CaseDetailsProps {
@@ -34,6 +34,8 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
   const [duplicateReasons, setDuplicateReasons] = useState<string[]>([]);
   const [isAnalyzingDuplicate, setIsAnalyzingDuplicate] = useState(false);
   const [localStatus, setLocalStatus] = useState<Detection["status"] | undefined>(detection?.status);
+  const [fullAddress, setFullAddress] = useState<string | null>(null);
+  const [showGeoLocationModal, setShowGeoLocationModal] = useState(false);
 
   const formatTimestamp = (timestamp: Detection["timestamp"]) => {
     if (!timestamp) return "N/A";
@@ -471,6 +473,54 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
 
     setIsHashUnique(duplicateCount === 0);
   }, [hash, detection, allDetections]);
+
+  // Fetch fullAddress from Firebase
+  useEffect(() => {
+    if (!detection || !db) {
+      setFullAddress(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchFullAddress = async () => {
+      try {
+        // Try 'cases' collection first (main collection), then fallback to 'detections'
+        let docRef = doc(db!, "cases", detection.id);
+        let docSnap = await getDoc(docRef);
+        
+        if (!docSnap.exists()) {
+          // Fallback to detections collection
+          docRef = doc(db!, "detections", detection.id);
+          docSnap = await getDoc(docRef);
+        }
+        
+        if (!cancelled && docSnap?.exists()) {
+          const data = docSnap.data();
+          // Get fullAddress from location.fullAddress
+          const address = data?.location?.fullAddress || data?.fullAddress || null;
+          setFullAddress(address);
+          console.log("✅ Fetched fullAddress from Firebase:", address);
+        } else {
+          if (!cancelled) {
+            setFullAddress(null);
+            console.warn("❌ Case document not found in Firebase");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch fullAddress from Firebase:", err);
+        if (!cancelled) {
+          setFullAddress(null);
+        }
+      }
+    };
+
+    fetchFullAddress();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detection?.id]);
 
   if (!detection) {
     return (
@@ -1697,47 +1747,43 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
               {isImageFit ? "Fill" : "Fit"}
             </button>
           </div>
-          <div className="aspect-video w-full rounded-xl overflow-hidden border border-slate-700 bg-slate-800 relative group cursor-crosshair">
+          <div className="aspect-video w-full rounded-lg overflow-hidden border border-slate-700/50 bg-slate-800 relative group hover:border-slate-600/50 transition-colors duration-300">
             {detection.image_url ? (
               <img
                 src={detection.image_url}
                 alt="Evidence"
-                className={`w-full h-full ${isImageFit ? "object-contain" : "object-cover"} grayscale-[0.5] group-hover:grayscale-0 transition-all duration-700`}
+                className={`w-full h-full ${isImageFit ? "object-contain" : "object-cover"} grayscale-[0.3] group-hover:grayscale-0 transition-all duration-500`}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 font-mono">
                 Evidence image unavailable
               </div>
             )}
-            <div className="absolute inset-0 bg-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            <div className="absolute top-4 left-4 border-l-2 border-t-2 border-emerald-500 w-8 h-8"></div>
-            <div className="absolute top-4 right-4 border-r-2 border-t-2 border-emerald-500 w-8 h-8"></div>
-            <div className="absolute bottom-4 left-4 border-l-2 border-b-2 border-emerald-500 w-8 h-8"></div>
-            <div className="absolute bottom-4 right-4 border-r-2 border-b-2 border-emerald-500 w-8 h-8"></div>
-            
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 border border-emerald-500/30 rounded-full animate-ping pointer-events-none"></div>
-
-            <div className="absolute bottom-4 left-4 bg-slate-950/80 px-2 py-1 rounded text-[8px] font-mono text-emerald-400">
-              AI_CONF: {(detection.confidence * 100).toFixed(2)}%
+            <div className="absolute bottom-4 right-4 bg-slate-950/70 backdrop-blur-sm px-3 py-2 rounded-lg text-[10px] font-mono text-slate-300 border border-slate-700/50 flex items-center gap-1">
+              Confidence: {(detection.confidence * 100).toFixed(1)}%
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-slate-800/30 p-3 rounded-lg border border-slate-800 hover:border-emerald-500/30 transition-colors">
-            <p className="text-[10px] text-slate-500 font-mono uppercase mb-1">Marketplace</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 rounded-lg transition-colors duration-200">
+            <p className="text-[9px] text-slate-400 font-mono uppercase mb-2 font-semibold tracking-wider">Marketplace</p>
             <div className="flex items-center gap-2">
-               <Share2 size={16} className="text-emerald-400" />
-               <span className="text-sm font-semibold truncate">{detection.platform_source || detection.source}</span>
+               <Share2 size={16} className="text-slate-400" />
+               <span className="text-sm font-semibold truncate text-slate-100">{detection.platform_source || detection.source}</span>
             </div>
           </div>
-          <div className="bg-slate-800/30 p-3 rounded-lg border border-slate-800 hover:border-emerald-500/30 transition-colors">
-            <p className="text-[10px] text-slate-500 font-mono uppercase mb-1">Geo-Location</p>
+          <button
+            type="button"
+            onClick={() => setShowGeoLocationModal(true)}
+            className="bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 rounded-lg transition-colors duration-200 cursor-pointer text-left"
+          >
+            <p className="text-[9px] text-slate-400 font-mono uppercase mb-2 font-semibold tracking-wider">Geo-Location</p>
             <div className="flex items-center gap-2">
-               <MapPin size={16} className={priorityIconColor[detection.priority]} />
-               <span className="text-sm font-semibold truncate text-slate-200">{detection.location_name}</span>
+               <MapPin size={16} className="text-slate-400" />
+               <span className="text-sm font-semibold truncate text-slate-100">{detection.location_name}</span>
             </div>
-          </div>
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -1746,45 +1792,47 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                 explainTrustScore();
               }
             }}
-            className="bg-slate-800/30 p-3 rounded-lg border border-slate-800 hover:border-emerald-500/30 transition-colors cursor-pointer text-left w-full"
+            className="bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 rounded-lg transition-colors duration-200 cursor-pointer text-left col-span-2"
           >
-            <p className="text-[10px] text-slate-500 font-mono uppercase mb-1">Trust Score</p>
-            <div className="flex items-center gap-2">
-               <Activity size={16} className="text-emerald-400" />
-               <span className="text-sm font-semibold text-slate-200">{detection.trust_score ?? 0}</span>
+            <p className="text-[9px] text-slate-400 font-mono uppercase mb-2 font-semibold tracking-wider">Trust Score - Matching Reports</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                 <Activity size={16} className="text-slate-400" />
+                 <span className="text-sm font-semibold text-slate-100">{detection.trust_score ?? 0} similar reports</span>
+              </div>
+              <span className="text-[10px] text-slate-500">Click to view</span>
             </div>
-            <div className="mt-1 text-[10px] text-emerald-400">Click to see matching cases</div>
           </button>
         </div>
 
-        <div className="bg-slate-800/30 p-3 rounded-lg border border-slate-800">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] text-slate-500 font-mono uppercase">Quick Action</p>
-            <span className="text-[10px] text-emerald-400 font-mono uppercase">Send to Ranger</span>
+        <div className="bg-slate-800/40 border border-slate-700/50 p-4 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Quick Action</p>
+            <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider">Send to Ranger</span>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={handleSendRangerWhatsApp}
-              className="px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-700 text-slate-400 text-[10px] font-mono uppercase tracking-widest hover:bg-emerald-500/20 hover:border-emerald-500/40 hover:text-emerald-200 transition-colors"
+              className="px-4 py-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono uppercase tracking-widest hover:bg-emerald-500/30 hover:border-emerald-500/50 transition-colors duration-200"
             >
               WhatsApp
             </button>
             <button
               type="button"
               onClick={handleSendRangerEmail}
-              className="px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-700 text-slate-400 text-[10px] font-mono uppercase tracking-widest hover:border-emerald-500/40 hover:text-emerald-300 transition-colors"
+              className="px-4 py-2.5 rounded-lg bg-slate-700/30 border border-slate-600/50 text-slate-300 text-[10px] font-mono uppercase tracking-widest hover:bg-slate-700/50 hover:border-slate-600 transition-colors duration-200"
             >
               Email
             </button>
           </div>
-          <p className="text-[10px] text-slate-500 mt-2">
+          <p className="text-[10px] text-slate-500 mt-3">
             Prefilled with case ID, species, and coordinates.
           </p>
         </div>
 
-        <div className="bg-slate-800/30 p-3 rounded-lg border border-slate-800">
-          <p className="text-[10px] text-slate-500 font-mono uppercase mb-2">Case Status</p>
+        <div className="bg-slate-800/40 border border-slate-700/50 p-4 rounded-lg">
+          <p className="text-[9px] text-slate-400 font-mono uppercase mb-3 tracking-wider font-semibold">Case Status</p>
           <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest">
             {(["Pending", "Investigating", "Resolved"] as Detection["status"][]).map((status) => (
               <button
@@ -1796,10 +1844,10 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                   setLocalStatus(nextStatus);
                   onStatusChange?.(detection.id, nextStatus);
                 }}
-                className={`px-2 py-1 rounded border transition-all ${
+                className={`px-3 py-2 rounded-lg border transition-all duration-200 ${
                   localStatus === status
-                    ? "bg-emerald-500/30 border-emerald-400 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.25)]"
-                    : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600"
+                    ? "bg-emerald-500/30 border-emerald-500/50 text-emerald-200"
+                    : "bg-slate-700/30 border-slate-600/50 text-slate-400 hover:bg-slate-700/50 hover:border-slate-600"
                 }`}
               >
                 {status}
@@ -1808,76 +1856,80 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-slate-900/70 via-slate-900/40 to-emerald-950/20 p-4 rounded-xl border border-slate-800/80 shadow-[0_10px_30px_rgba(15,23,42,0.35)]">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] text-slate-400 font-mono uppercase tracking-widest">Case Metadata</p>
-            <span className="text-[9px] text-emerald-400/80 font-mono uppercase tracking-[0.3em]">Live</span>
+        <div className="bg-slate-900/40 border border-slate-700/50 p-4 rounded-lg">
+          <div className="mb-3 pb-3 border-b border-slate-700/30">
+            <p className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Case Information</p>
+            <p className="text-[8px] text-slate-500 mt-1">Detection metadata and evidence details</p>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Detected Species</span>
-              <div className="mt-1 text-slate-100 font-semibold">
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Detected Species</span>
+              <div className="mt-2 text-slate-100 font-medium">
                 {detection.species_detected || detection.detected_species_name || detection.animal_type || "N/A"}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Platform Source</span>
-              <div className="mt-1 text-slate-100 font-semibold">
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Platform Source</span>
+              <div className="mt-2 text-slate-100 font-medium">
                 {detection.platform_source || detection.source || "N/A"}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Location (State)</span>
-              <div className="mt-1 text-slate-100 font-semibold">{detection.location_name || "Unknown"}</div>
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Location (State)</span>
+              <div className="mt-2 text-slate-100 font-medium">{detection.location_name || "Unknown"}</div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Priority</span>
-              <div className="mt-1">
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200 col-span-2">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Full Address</span>
+              <div className="mt-2 text-slate-100 leading-relaxed break-words">{fullAddress || "N/A"}</div>
+            </div>
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Priority</span>
+              <div className="mt-2">
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono uppercase border ${priorityBadgeClass[detection.priority]}`}>
                   {detection.priority}
                 </span>
               </div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">AI Scanned At</span>
-              <div className="mt-1 text-slate-200">{formattedAiScannedAt}</div>
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">AI Scanned At</span>
+              <div className="mt-2 text-slate-100">{formattedAiScannedAt}</div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Created At</span>
-              <div className="mt-1 text-slate-200">{formattedCreatedAt}</div>
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Created At</span>
+              <div className="mt-2 text-slate-100">{formattedCreatedAt}</div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Confidence Score</span>
-              <div className="mt-1 text-slate-100 font-semibold">
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Confidence Score</span>
+              <div className="mt-2 text-slate-100 font-medium">
                 {((detection.confidence_score ?? detection.confidence) * 100).toFixed(0)}%
               </div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Risk Score</span>
-              <div className="mt-1 text-slate-100 font-semibold">
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Risk Score</span>
+              <div className="mt-2 text-slate-100 font-medium">
                 {typeof detection.risk_score === "number" ? detection.risk_score.toFixed(2) : "N/A"}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Detected Illegal Product</span>
-              <div className="mt-1 text-slate-200">{detection.detected_illegal_product || "Unknown"}</div>
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Detected Illegal Product</span>
+              <div className="mt-2 text-slate-100">{detection.detected_illegal_product || "Unknown"}</div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Source</span>
-              <div className="mt-1 text-slate-200">{detection.source || "N/A"}</div>
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Source</span>
+              <div className="mt-2 text-slate-100">{detection.source || "N/A"}</div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Evidence Summary</span>
-              <div className="mt-1 text-slate-200">{detection.reason_summary || "N/A"}</div>
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Evidence Summary</span>
+              <div className="mt-2 text-slate-100">{detection.reason_summary || "N/A"}</div>
             </div>
-            <div className="rounded-lg bg-slate-950/40 border border-slate-800/70 p-3 col-span-2">
-              <span className="text-[10px] text-slate-500 font-mono uppercase">Reason</span>
-              <div className="mt-1 text-slate-200 leading-relaxed break-words">{detection.reason || "N/A"}</div>
+            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200 col-span-2">
+              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Reason</span>
+              <div className="mt-2 text-slate-100 leading-relaxed break-words">{detection.reason || "N/A"}</div>
             </div>
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="hidden space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-[10px] uppercase font-mono text-slate-500 tracking-widest">Gemini AI Verification Intel</label>
           </div>
@@ -2133,6 +2185,64 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                     : "Single report detected. Monitor for additional reports in this location. Consider investigating if other signals (high confidence, verified source) support action."
                   }
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Geo-Location Modal */}
+      {showGeoLocationModal && detection && (
+        <div 
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowGeoLocationModal(false)}
+        >
+          <div 
+            className="bg-slate-900 border border-emerald-500/30 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-slate-900 border-b border-emerald-500/20 p-4 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-bold text-emerald-400 flex items-center gap-2">
+                  <MapPin size={20} />
+                  Location Details
+                </h3>
+                <p className="text-xs text-slate-500 font-mono mt-1">
+                  {detection.animal_type} • {detection.source}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowGeoLocationModal(false)}
+                className="text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* State/Location */}
+              <div className="bg-slate-800/50 border border-emerald-500/20 rounded-lg p-4">
+                <h4 className="text-sm font-bold text-slate-200 mb-2 flex items-center gap-2">
+                  <MapPin size={16} className="text-emerald-400" />
+                  State/Location
+                </h4>
+                <p className="text-sm text-slate-300 font-mono">{detection.location_name || "Unknown"}</p>
+              </div>
+
+              {/* Full Address - only show if available */}
+              {fullAddress && (
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
+                  <h4 className="text-sm font-bold text-emerald-400 mb-2">Full Address</h4>
+                  <p className="text-sm text-slate-300 leading-relaxed break-words">{fullAddress}</p>
+                </div>
+              )}
+
+              {/* Coordinates */}
+              <div className="bg-slate-800/50 border border-emerald-500/20 rounded-lg p-4">
+                <h4 className="text-sm font-bold text-slate-200 mb-2">Coordinates</h4>
+                <p className="text-sm text-slate-300 font-mono">{detection.lat.toFixed(6)}, {detection.lng.toFixed(6)}</p>
               </div>
             </div>
           </div>
