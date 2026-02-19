@@ -126,6 +126,26 @@ A real-time wildlife trade enforcement dashboard powered by AI-driven evidence i
 - **Local Context Support:** Helps officers understand Chinese/Malay listings quickly
 - **Preserves Meaning:** Translation preserves names, species, and evidence wording
 
+### 🔊 Speech Accessibility Features
+- **Auto-Speak Case Name:** When you click on a case in the alert feed, the case name automatically speaks aloud
+  - Instantly alerts officers when a new case is selected
+  - Speaks: "[Animal Type] case detected" (e.g., "Tiger case detected")
+  - Helps officers know immediately which case they clicked without looking
+  - Works automatically on every case click
+- **Text-to-Speech (Read Aloud):** Click the "Read" button in case details to read full case information aloud
+  - Reads case ID, species, priority, location, confidence, and status
+  - Helps officers with vision impairment access critical case information
+  - Manually toggle to start/stop reading detailed case information
+  - One-click toggle to start/stop reading
+- **Speech-to-Text (Voice Search):** Click the microphone icon next to the search bar for hands-free searching
+  - Speak case species, location, or source directly into the dashboard
+  - Useful for quick searches while operating in the field
+  - Real-time transcription with result highlighting
+  - Pulsing green mic icon indicates active listening
+  - Supported languages: English (expandable to additional languages)
+- **Accessibility Support:** Enables enforcement officers with visual or mobility impairment to operate the dashboard independently
+- **Hands-Free Operation:** Particularly useful for field operations where typing is impractical
+
 ### 🌓 Dark / Light Mode Toggle
 - **Theme Switch:** Simple toggle in the header
 - **Night Shift Ready:** Dark mode optimized for low-light operations

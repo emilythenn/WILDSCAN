@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Detection } from '../types';
-import { Clock, MapPin, Share2, FileText, ShieldCheck, Download, Link as LinkIcon, AlertCircle, Activity, X } from 'lucide-react';
+import { Clock, MapPin, Share2, FileText, ShieldCheck, Download, Link as LinkIcon, AlertCircle, Activity, X, Volume2, VolumeX } from 'lucide-react';
+import { speakText, stopSpeaking, isSpeechSynthesisSupported, isSpeaking } from '../utils/speechUtils';
 import { GoogleGenAI } from "@google/genai";
 import { jsPDF } from "jspdf";
 import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, UnderlineType, convertInchesToTwip, ImageRun, Table, TableCell, TableRow, WidthType, BorderStyle, Packer } from "docx";
@@ -36,6 +37,8 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
   const [localStatus, setLocalStatus] = useState<Detection["status"] | undefined>(detection?.status);
   const [fullAddress, setFullAddress] = useState<string | null>(null);
   const [showGeoLocationModal, setShowGeoLocationModal] = useState(false);
+  const [isReadAloudActive, setIsReadAloudActive] = useState(false);
+  const [isSpeechSupported] = useState(() => isSpeechSynthesisSupported());
 
   const formatTimestamp = (timestamp: Detection["timestamp"]) => {
     if (!timestamp) return "N/A";
@@ -48,6 +51,50 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
     const parsed = new Date(timestamp as string);
     return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : "N/A";
   };
+
+  // Generate text for read-aloud functionality
+  const generateReadAloudText = (): string => {
+    if (!detection) return "";
+    
+    const parts: string[] = [];
+    parts.push(`Case Details for Case ID ${detection.id}`);
+    parts.push(`Species: ${detection.animal_type}`);
+    parts.push(`Priority Level: ${detection.priority}`);
+    parts.push(`Location: ${detection.location_name || "Unknown"}`);
+    parts.push(`Coordinates: ${detection.lat.toFixed(4)}, ${detection.lng.toFixed(4)}`);
+    parts.push(`Confidence: ${(detection.confidence * 100).toFixed(1)} percent`);
+    parts.push(`Source: ${detection.source}`);
+    parts.push(`Status: ${detection.status || "Not set"}`);
+    parts.push(`Timestamp: ${formatTimestamp(detection.timestamp)}`);
+    if (detection.description) {
+      parts.push(`Description: ${detection.description}`);
+    }
+    
+    return parts.join(". ");
+  };
+
+  // Auto-read case details when detection changes
+  useEffect(() => {
+    if (detection && isReadAloudActive && isSpeechSupported) {
+      const textToRead = generateReadAloudText();
+      speakText(textToRead);
+    }
+    
+    return () => {
+      if (isReadAloudActive) {
+        stopSpeaking();
+      }
+    };
+  }, [detection, isReadAloudActive, isSpeechSupported]);
+
+  // Auto-speak case name when case is clicked
+  useEffect(() => {
+    if (detection && isSpeechSupported) {
+      // Speak only the case name when a new case is clicked
+      const caseNameText = `${detection.animal_type} case detected`;
+      speakText(caseNameText);
+    }
+  }, [detection?.id, isSpeechSupported]); // Only trigger when detection ID changes (new case clicked)
 
   const loadImageDataUrl = async (url: string) => {
     const response = await fetch(url, { mode: "cors" });
@@ -1739,13 +1786,34 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-[10px] uppercase font-mono text-slate-500 tracking-widest">Visual Evidence</label>
-            <button
-              type="button"
-              onClick={() => setIsImageFit((prev) => !prev)}
-              className="text-[10px] uppercase font-mono tracking-widest text-emerald-400 hover:text-emerald-300 transition-colors"
-            >
-              {isImageFit ? "Fill" : "Fit"}
-            </button>
+            <div className="flex items-center gap-3">
+              {isSpeechSupported && (
+                <button
+                  type="button"
+                  onClick={() => setIsReadAloudActive(!isReadAloudActive)}
+                  className={`text-[10px] uppercase font-mono tracking-widest transition-all flex items-center gap-1 ${
+                    isReadAloudActive
+                      ? 'text-emerald-400 hover:text-emerald-300'
+                      : 'text-slate-500 hover:text-emerald-400'
+                  }`}
+                  title={isReadAloudActive ? 'Stop reading case details' : 'Read case details aloud'}
+                  aria-label={isReadAloudActive ? 'Stop reading case details' : 'Read case details aloud'}
+                >
+                  {isReadAloudActive || isSpeaking() ? (
+                    <><VolumeX size={14} /> Reading</>
+                  ) : (
+                    <><Volume2 size={14} /> Read</>
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsImageFit((prev) => !prev)}
+                className="text-[10px] uppercase font-mono tracking-widest text-emerald-400 hover:text-emerald-300 transition-colors"
+              >
+                {isImageFit ? "Fill" : "Fit"}
+              </button>
+            </div>
           </div>
           <div className="aspect-video w-full rounded-lg overflow-hidden border border-slate-700/50 bg-slate-800 relative group hover:border-slate-600/50 transition-colors duration-300">
             {detection.image_url ? (

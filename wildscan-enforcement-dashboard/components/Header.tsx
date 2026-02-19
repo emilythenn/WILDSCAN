@@ -1,6 +1,7 @@
 
-import React from 'react';
-import { Shield, Bell, Search } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Shield, Bell, Search, Mic } from 'lucide-react';
+import { startSpeechRecognition, stopSpeechRecognition, isSpeechRecognitionSupported } from '../utils/speechUtils';
 
 interface HeaderProps {
   onSearch: (query: string) => void;
@@ -34,6 +35,39 @@ const Header: React.FC<HeaderProps> = ({
   firestoreStatus,
   firestoreError,
 }) => {
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const [searchInput, setSearchInput] = useState('');
+
+  const handleVoiceSearch = () => {
+    if (!isSpeechRecognitionSupported()) {
+      alert('Speech Recognition is not supported in your browser');
+      return;
+    }
+
+    if (isListening) {
+      stopSpeechRecognition(recognitionRef.current);
+      setIsListening(false);
+      return;
+    }
+
+    setIsListening(true);
+    recognitionRef.current = startSpeechRecognition({
+      language: 'en-US',
+      onResult: (transcript) => {
+        setSearchInput(transcript);
+        onSearch(transcript);
+        setIsListening(false);
+      },
+      onError: (error) => {
+        console.error('Speech recognition error:', error);
+        setIsListening(false);
+      },
+      onEnd: () => {
+        setIsListening(false);
+      },
+    });
+  };
   const statusStyles: Record<HeaderProps["firestoreStatus"], string> = {
     connected: "bg-emerald-500/10 border-emerald-500 text-emerald-300",
     connecting: "bg-amber-500/10 border-amber-500 text-amber-300",
@@ -75,14 +109,31 @@ const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex-1 max-w-xl mx-8 hidden md:block">
-        <div className="relative group">
+        <div className="relative group flex items-center">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-emerald-400 transition-colors" size={18} />
           <input 
             type="text" 
             placeholder="Search by species, location, or source..."
-            onChange={(e) => onSearch(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all text-slate-300"
+            value={searchInput}
+            onChange={(e) => {
+              setSearchInput(e.target.value);
+              onSearch(e.target.value);
+            }}
+            className="w-full bg-slate-900 border border-slate-800 rounded-lg py-2 pl-10 pr-12 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all text-slate-300"
           />
+          <button
+            type="button"
+            onClick={handleVoiceSearch}
+            className={`absolute right-3 transition-all ${
+              isListening 
+                ? 'text-emerald-400 animate-pulse' 
+                : 'text-slate-500 hover:text-emerald-400'
+            }`}
+            title={isListening ? 'Stop listening' : 'Start voice search'}
+            aria-label={isListening ? 'Stop listening' : 'Start voice search'}
+          >
+            <Mic size={18} />
+          </button>
         </div>
       </div>
 
