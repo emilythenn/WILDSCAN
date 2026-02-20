@@ -34,6 +34,7 @@ const App: React.FC = () => {
   const [toastNotifications, setToastNotifications] = useState<{ id: string; caseId: string; title: string; description: string; time: string }[]>([]);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const hasRequestedNotifications = useRef(false);
+  const hasLoadedCasesRef = useRef(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
   const [firestoreStatus, setFirestoreStatus] = useState<"connecting" | "connected" | "error" | "offline">("connecting");
@@ -42,6 +43,7 @@ const App: React.FC = () => {
   const [caseStatusById, setCaseStatusById] = useState<Record<string, Detection["status"]>>({});
   const [readStateByCase, setReadStateByCase] = useState<Record<string, boolean>>({});
   const [resolvedLocationsById, setResolvedLocationsById] = useState<Record<string, string>>({});
+  const [caseUpdateEvents, setCaseUpdateEvents] = useState<{ id: string; data: any }[]>([]);
   const resolvingLocationRef = useRef<Set<string>>(new Set());
 
 
@@ -82,6 +84,32 @@ const App: React.FC = () => {
     ].filter((value) => typeof value === "string" && value.trim().length > 0);
 
     return parts.length > 0 ? parts.join(", ") : "";
+  };
+
+  const getCaseTitle = (data: any) => {
+    return data?.detectedSpecies
+      || data?.detected_species
+      || data?.speciesDetected
+      || data?.species_detected
+      || data?.detectedSpeciesName
+      || data?.detected_species_name
+      || data?.animal_type
+      || data?.caseName
+      || data?.case_name
+      || "Unknown case";
+  };
+
+  const getCaseDescription = (data: any) => {
+    return data?.description
+      || data?.summary
+      || data?.reasonSummary
+      || data?.reason_summary
+      || data?.status
+      || "Case updated.";
+  };
+
+  const getCaseLocation = (data: any) => {
+    return resolveLocationName(data) || "Unknown location";
   };
 
   const isUnknownLocation = (value?: string) => {
@@ -239,8 +267,20 @@ const App: React.FC = () => {
           setCaseDocs([]);
           setFirestoreStatus("connected");
           setFirestoreError(null);
+          hasLoadedCasesRef.current = true;
           return;
         }
+
+        const changes = snapshot.docChanges();
+        if (hasLoadedCasesRef.current) {
+          const modifiedCases = changes
+            .filter((change) => change.type === "modified")
+            .map((change) => ({ id: change.doc.id, data: change.doc.data() }));
+          if (modifiedCases.length > 0) {
+            setCaseUpdateEvents((prev) => [...prev, ...modifiedCases]);
+          }
+        }
+        hasLoadedCasesRef.current = true;
 
         const nextDocs = snapshot.docs.map((doc: any) => ({ id: doc.id, data: doc.data() }));
         setCaseDocs(nextDocs);
@@ -590,11 +630,11 @@ const App: React.FC = () => {
   const priorityIconColor: Record<Detection["priority"], string> = {
     High: "text-red-400",
     Medium: "text-amber-400",
-    Low: "text-emerald-400",
+    Low: "text-lime-700",
   };
   const selectedPriorityColor = selectedDetection
     ? priorityIconColor[selectedDetection.priority]
-    : "text-slate-500";
+    : "text-green-700";
 
   const showSystemNotification = useCallback((title: string, body: string, onClick?: () => void) => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
@@ -648,6 +688,71 @@ const App: React.FC = () => {
       setSelectedDetection(target);
     }
   }, [detections]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (!db) return;
+    if (caseUpdateEvents.length === 0) return;
+
+    const created = caseUpdateEvents.map((event, index) => {
+      const title = getCaseTitle(event.data);
+      const description = getCaseDescription(event.data);
+      return {
+        id: `case-update-${event.id}-${Date.now()}-${index}`,
+        caseId: event.id,
+        title,
+        description,
+        time: new Date().toLocaleTimeString(),
+      };
+    });
+
+    const batch = writeBatch(db);
+    created.forEach((notice) => {
+      const sourceEvent = caseUpdateEvents.find((event) => event.id === notice.caseId);
+      const location = sourceEvent ? getCaseLocation(sourceEvent.data) : "Unknown location";
+      batch.set(
+        doc(db, NOTIFICATIONS_COLLECTION, notice.caseId),
+        {
+          caseId: notice.caseId,
+          title: notice.title,
+          location,
+          updatedAt: serverTimestamp(),
+          read: false,
+          type: "update",
+        },
+        { merge: true }
+      );
+      batch.set(
+        doc(db, NOTIFICATION_STATE_COLLECTION, notice.caseId),
+        { caseId: notice.caseId, read: false, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+    });
+    batch.commit().catch((error) => {
+      console.error("Failed to update notification records:", error);
+    });
+
+    setToastNotifications((prev) => {
+      const next = [...created, ...prev];
+      return next.slice(0, 3);
+    });
+
+    created.forEach((notice) => {
+      setTimeout(() => {
+        setToastNotifications((prev) => prev.filter((item) => item.id !== notice.id));
+      }, 6000);
+    });
+
+    created.forEach((notice) => {
+      showSystemNotification(
+        `Case updated: ${notice.title}`,
+        notice.description,
+        () => handleOpenNotification(notice.caseId)
+      );
+    });
+
+    setCaseUpdateEvents([]);
+  }, [caseUpdateEvents, db, getCaseDescription, getCaseLocation, getCaseTitle, handleOpenNotification, isAuthenticated, showSystemNotification]);
 
   const handleNotificationClick = useCallback((caseId: string) => {
     handleOpenNotification(caseId);
@@ -866,13 +971,13 @@ const App: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen bg-slate-950 text-slate-100 overflow-y-auto font-sans"
+      className="min-h-screen bg-lime-200 text-green-950 overflow-y-auto font-sans"
       dir="rtl"
     >
       <div className="flex min-h-screen" dir="ltr">
         {/* Global Scanning Line Animation */}
-        <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500/20 z-50 overflow-hidden">
-          <div className="h-full bg-emerald-500 w-1/3 animate-[loading_3s_infinite]"></div>
+        <div className="absolute top-0 left-0 w-full h-1 bg-lime-300/40 z-50 overflow-hidden">
+          <div className="h-full bg-lime-600 w-1/3 animate-[loading_3s_infinite]"></div>
         </div>
 
         <div className="flex flex-col flex-1 overflow-hidden relative">
@@ -920,24 +1025,24 @@ const App: React.FC = () => {
                   <button
                     key={notice.id}
                     onClick={() => handleOpenNotification(notice.caseId)}
-                    className="bg-slate-950/90 border border-emerald-500/30 shadow-xl rounded-lg px-4 py-3 text-left text-xs text-slate-200 w-72 hover:border-emerald-500/60 hover:bg-slate-900/90 transition-colors"
+                    className="bg-white/90 border border-lime-400/50 shadow-xl rounded-lg px-4 py-3 text-left text-xs text-green-900 w-72 hover:border-lime-600/60 hover:bg-white/90 transition-colors"
                   >
-                    <div className="text-[10px] uppercase tracking-widest text-emerald-400 font-mono">{notice.title}</div>
-                    <div className="mt-1 text-slate-100 line-clamp-3">{notice.description}</div>
-                    <div className="mt-1 text-[10px] text-slate-500 font-mono">{notice.time}</div>
+                    <div className="text-[10px] uppercase tracking-widest text-lime-700 font-mono">{notice.title}</div>
+                    <div className="mt-1 text-green-950 line-clamp-3">{notice.description}</div>
+                    <div className="mt-1 text-[10px] text-green-700 font-mono">{notice.time}</div>
                   </button>
                 ))}
               </div>
             )}
             <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
             {/* Live Feed Header Area */}
-            <div className="h-48 border-b border-emerald-500/20 bg-slate-900/50 backdrop-blur-sm z-10 flex-shrink-0">
-              <div className="px-6 py-2 flex justify-between items-center bg-slate-950/50 border-b border-emerald-500/10">
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-mono uppercase tracking-widest">
+            <div className="h-48 border-b border-lime-400/40 bg-white/50 backdrop-blur-sm z-10 flex-shrink-0">
+              <div className="px-6 py-2 flex justify-between items-center bg-white/60 border-b border-lime-300/60">
+                <div className="flex items-center gap-2 text-lime-700 text-xs font-mono uppercase tracking-widest">
                   <Activity size={14} className="animate-pulse" />
                   <span>Live Detection Stream ({filteredDetections.length})</span>
                 </div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-tighter">
+                <div className="text-[10px] text-green-700 uppercase tracking-tighter">
                   Status: Secure Monitoring Active
                 </div>
               </div>
@@ -949,7 +1054,7 @@ const App: React.FC = () => {
             </div>
 
             {/* Map Area */}
-            <div className="flex-1 min-h-[600px] relative bg-slate-900 flex-shrink-0">
+            <div className="flex-1 min-h-[600px] relative bg-white flex-shrink-0">
                <CrimeMap 
                 detections={detections} 
                 selectedDetection={selectedDetection}
@@ -958,9 +1063,9 @@ const App: React.FC = () => {
                
                {/* HUD Overlays */}
                <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-2 pointer-events-none">
-                 <div className="bg-slate-900/80 backdrop-blur-md border border-emerald-500/30 p-3 rounded-lg shadow-2xl">
-                    <h3 className="text-emerald-400 text-[10px] uppercase font-mono mb-2">Location Priority</h3>
-                    <div className="flex flex-col gap-2 text-[10px] text-slate-300 font-mono">
+                 <div className="bg-white/80 backdrop-blur-md border border-lime-400/50 p-3 rounded-lg shadow-2xl">
+                    <h3 className="text-lime-700 text-[10px] uppercase font-mono mb-2">Location Priority</h3>
+                    <div className="flex flex-col gap-2 text-[10px] text-green-900 font-mono">
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1">
                           <MapPin size={12} className="text-red-400" />
@@ -971,7 +1076,7 @@ const App: React.FC = () => {
                           <span>Medium</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <MapPin size={12} className="text-emerald-400" />
+                          <MapPin size={12} className="text-lime-700" />
                           <span>Low</span>
                         </div>
                       </div>
@@ -982,7 +1087,7 @@ const App: React.FC = () => {
           </div>
 
           {/* Details Sidebar */}
-            <aside className="w-96 border-l border-emerald-500/20 bg-slate-900/80 backdrop-blur-md transition-all duration-300 overflow-hidden flex flex-col shadow-2xl">
+            <aside className="w-96 border-l border-lime-400/40 bg-white/80 backdrop-blur-md transition-all duration-300 overflow-hidden flex flex-col shadow-2xl">
                <CaseDetails
                  detection={selectedDetection}
                  allDetections={detections}

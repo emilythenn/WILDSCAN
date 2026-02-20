@@ -21,7 +21,7 @@ interface FiltersBarProps {
 const severityStyles: Record<Detection["priority"], string> = {
   High: "bg-red-500/10 border-red-500 text-red-400",
   Medium: "bg-amber-500/10 border-amber-500 text-amber-400",
-  Low: "bg-emerald-500/10 border-emerald-500 text-emerald-400",
+  Low: "bg-lime-200/60 border-lime-400 text-lime-700",
 };
 
 const FiltersBar: React.FC<FiltersBarProps> = ({
@@ -80,8 +80,8 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
   };
 
   return (
-    <div className="bg-slate-950/80 border-b border-emerald-500/20 px-6 py-3 flex flex-wrap items-center gap-3">
-      <div className="flex items-center gap-2 text-[10px] text-emerald-400 font-mono uppercase tracking-widest">
+    <div className="bg-white/80 border-b border-lime-400/40 px-6 py-3 flex flex-wrap items-center gap-3">
+      <div className="flex items-center gap-2 text-[10px] text-lime-700 font-mono uppercase tracking-widest">
         <Filter size={12} />
         Active Filters
       </div>
@@ -91,8 +91,8 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
           onClick={onSelectAllSeverities}
           className={`px-2 py-1 rounded border text-[10px] font-mono uppercase tracking-widest transition-all ${
             isAllSelected
-              ? "bg-emerald-500/10 border-emerald-500 text-emerald-300"
-              : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600"
+              ? "bg-lime-200/60 border-lime-400 text-lime-800"
+              : "bg-white border-lime-300 text-green-700 hover:border-lime-400"
           }`}
         >
           All
@@ -106,7 +106,7 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
               className={`px-2 py-1 rounded border text-[10px] font-mono uppercase tracking-widest transition-all ${
                 isActive
                   ? severityStyles[level]
-                  : "bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600"
+                  : "bg-white border-lime-300 text-green-700 hover:border-lime-400"
               }`}
             >
               {level}
@@ -116,12 +116,12 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="text-[10px] text-slate-500 font-mono uppercase">Source</span>
+        <span className="text-[10px] text-green-700 font-mono uppercase">Source</span>
         {!showSourceInput ? (
           <select
             value={sourceFilter}
             onChange={(e) => handleSourceChange(e.target.value)}
-            className="bg-slate-900 border border-slate-800 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/50"
+            className="bg-white border border-lime-300 text-green-900 text-xs rounded px-2 py-1 focus:outline-none focus:border-lime-400/50"
           >
             <option value="All">All</option>
             {PREDEFINED_SOURCES.map((source) => (
@@ -140,12 +140,12 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                 if (e.key === "Enter") handleCustomSourceSubmit();
               }}
               placeholder="Enter source..."
-              className="bg-slate-800 border border-emerald-500/50 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/80"
+              className="bg-lime-200 border border-lime-400/50 text-green-900 text-xs rounded px-2 py-1 focus:outline-none focus:border-lime-400/80"
               autoFocus
             />
             <button
               onClick={handleCustomSourceSubmit}
-              className="px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30 text-xs font-mono"
+              className="px-2 py-1 rounded bg-lime-300/40 border border-lime-400/50 text-lime-700 hover:bg-lime-300/50 text-xs font-mono"
             >
               +
             </button>
@@ -154,12 +154,12 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="text-[10px] text-slate-500 font-mono uppercase">Location</span>
+        <span className="text-[10px] text-green-700 font-mono uppercase">Location</span>
         {!showLocationInput ? (
           <select
             value={locationFilter}
             onChange={(e) => handleLocationChange(e.target.value)}
-            className="bg-slate-900 border border-slate-800 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/50"
+            className="bg-white border border-lime-300 text-green-900 text-xs rounded px-2 py-1 focus:outline-none focus:border-lime-400/50"
           >
             <option value="All">All</option>
             {PREDEFINED_LOCATIONS.map((location) => (
@@ -178,12 +178,12 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
                 if (e.key === "Enter") handleCustomLocationSubmit();
               }}
               placeholder="Enter location..."
-              className="bg-slate-800 border border-emerald-500/50 text-slate-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-emerald-500/80"
+              className="bg-lime-200 border border-lime-400/50 text-green-900 text-xs rounded px-2 py-1 focus:outline-none focus:border-lime-400/80"
               autoFocus
             />
             <button
               onClick={handleCustomLocationSubmit}
-              className="px-2 py-1 rounded bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30 text-xs font-mono"
+              className="px-2 py-1 rounded bg-lime-300/40 border border-lime-400/50 text-lime-700 hover:bg-lime-300/50 text-xs font-mono"
             >
               +
             </button>
@@ -192,22 +192,22 @@ const FiltersBar: React.FC<FiltersBarProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
-        <SlidersHorizontal size={12} className="text-emerald-400" />
-        <span className="text-[10px] text-slate-500 font-mono uppercase">Min Conf</span>
+        <SlidersHorizontal size={12} className="text-lime-700" />
+        <span className="text-[10px] text-green-700 font-mono uppercase">Min Conf</span>
         <input
           type="range"
           min={0}
           max={100}
           value={Math.round(minConfidence * 100)}
           onChange={(e) => onMinConfidenceChange(Number(e.target.value) / 100)}
-          className="w-28 accent-emerald-500"
+          className="w-28 accent-lime-600"
         />
-        <span className="text-[10px] text-slate-300 font-mono">{Math.round(minConfidence * 100)}%</span>
+        <span className="text-[10px] text-green-900 font-mono">{Math.round(minConfidence * 100)}%</span>
       </div>
 
       <button
         onClick={onReset}
-        className="ml-auto flex items-center gap-1 px-2 py-1 rounded border border-slate-800 text-[10px] font-mono uppercase tracking-widest text-slate-400 hover:border-emerald-500/40 hover:text-emerald-400 transition-colors"
+        className="ml-auto flex items-center gap-1 px-2 py-1 rounded border border-lime-300 text-[10px] font-mono uppercase tracking-widest text-green-800 hover:border-lime-500/60 hover:text-lime-700 transition-colors"
       >
         <Flame size={12} />
         Reset

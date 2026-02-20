@@ -9,10 +9,10 @@ A cutting-edge real-time enforcement dashboard designed for investigating illega
 ```
 WILDSCAN/
 ├── wildscan-enforcement-dashboard/  # Main React application
-│   ├── src/
-│   │   ├── components/              # React components
-│   │   ├── App.tsx                  # Main application component
-│   │   └── types.ts                 # TypeScript definitions
+│   ├── components/                  # React components
+│   ├── utils/                       # Shared helpers
+│   ├── App.tsx                      # Main application component
+│   ├── types.ts                     # TypeScript definitions
 │   ├── package.json
 │   ├── README.md                    # Complete feature documentation
 │   └── vite.config.ts               # Vite configuration
@@ -30,12 +30,14 @@ WILDSCAN/
    ```
 
 2. **Configure environment:**
-   Create `.env.local` with your credentials:
-   ```env
-   VITE_GEMINI_API_KEY=your_key_here
-   VITE_FIREBASE_PROJECT_ID=your_project_id
-   # See wildscan-enforcement-dashboard/README.md for full config
-   ```
+  Create `.env.local` with your credentials:
+  ```env
+  VITE_GEMINI_API_KEY=your_key_here
+  VITE_GOOGLE_MAPS_API_KEY=your_maps_key_here
+  VITE_LOGIN_EMAIL=your_login_email
+  VITE_LOGIN_PASSWORD=your_login_password
+  VITE_LOGIN_KEY=your_access_key
+  ```
 
 3. **Run the dashboard:**
    ```bash
@@ -51,7 +53,6 @@ WILDSCAN/
 ### 🔐 Authentication & Access Control
 - Secure enforcement login with email, password, and access key verification
 - Session management with local storage persistence
-- Role-based access control (local enforcement officers only)
 
 ### 📊 Real-Time Case Management
 - Live Firestore streaming of detection cases with real-time updates
@@ -69,11 +70,11 @@ WILDSCAN/
 - **Status Strip:** Real-time totals, priority counts, average confidence metrics, and activity sparkline
 
 ### 📍 Geographic Visualization
-- Google Maps integration with themed dark map styling
+- Google Maps integration with light enforcement theme
 - Clickable markers for each detection case
-- Optional heatmap layer for high-density areas
 - Auto-centering and zoom on case selection
 - Location-based case clustering
+- Smart patrol route optimization, turn-by-turn guidance, and Waze handoff
 
 ### 🖼️ Evidence Management & Visualization
 - Evidence image viewer with full-resolution display
@@ -116,7 +117,7 @@ WILDSCAN/
 - **Investigation Guidance:** Use trust scores to prioritize investigation resources
 
 ### 🔔 Notifications & Alerts
-- **Real-Time Notifications:** Browser notifications for new case detections
+- **Real-Time Notifications:** Browser notifications for new case detections and updates
 - **Unread Indicators:** Red dot badges on unread cases
 - **Notification Feed:** Sortable alert carousel with priority badges
 - **System Integration:** Optional browser system notifications
@@ -126,11 +127,6 @@ WILDSCAN/
 - **Send to Ranger Button:** One-click WhatsApp or email message for each case
 - **Pre-Filled Details:** Case ID, species, location name, and coordinates
 - **Field-Ready:** Enables fast dispatch from the command center to patrol teams
-
-### 🌐 Multi-Language Translation
-- **Translate to English:** On-demand translation of case descriptions via Gemini
-- **Local Context Support:** Helps officers understand Chinese/Malay listings quickly
-- **Preserves Meaning:** Translation preserves names, species, and evidence wording
 
 ### 🔊 Speech Accessibility Features
 - **Auto-Speak Case Name:** When you click on a case in the alert feed, the case name automatically speaks aloud
@@ -151,11 +147,6 @@ WILDSCAN/
   - Supported languages: English (expandable to additional languages)
 - **Accessibility Support:** Enables enforcement officers with visual or mobility impairment to operate the dashboard independently
 - **Hands-Free Operation:** Particularly useful for field operations where typing is impractical
-
-### 🌓 Dark / Light Mode Toggle
-- **Theme Switch:** Simple toggle in the header
-- **Night Shift Ready:** Dark mode optimized for low-light operations
-- **Daylight Visibility:** Light mode for briefing rooms and reports
 
 ### 📋 Report Generation
 - **AI-Powered Reports:** Automated report generation for prosecution

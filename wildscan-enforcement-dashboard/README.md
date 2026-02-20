@@ -21,13 +21,12 @@ A real-time wildlife trade enforcement dashboard powered by AI-driven evidence i
    Create a `.env.local` file in the project root:
    ```env
    VITE_GEMINI_API_KEY=your_gemini_api_key_here
-   VITE_FIREBASE_API_KEY=your_firebase_api_key
-   VITE_FIREBASE_AUTH_DOMAIN=your_firebase_auth_domain
-   VITE_FIREBASE_PROJECT_ID=your_firebase_project_id
-   VITE_FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
-   VITE_FIREBASE_MESSAGING_SENDER_ID=your_firebase_sender_id
-   VITE_FIREBASE_APP_ID=your_firebase_app_id
+   VITE_GOOGLE_MAPS_API_KEY=your_maps_key_here
+   VITE_LOGIN_EMAIL=your_login_email
+   VITE_LOGIN_PASSWORD=your_login_password
+   VITE_LOGIN_KEY=your_access_key
    ```
+   Firebase config is currently defined in [firebase.ts](firebase.ts).
 
 3. **Run the development server:**
    ```bash
@@ -63,11 +62,11 @@ A real-time wildlife trade enforcement dashboard powered by AI-driven evidence i
 - **Status Strip:** Real-time totals, priority counts, average confidence metrics, and activity sparkline
 
 ### 📍 Geographic Visualization
-- Google Maps integration with themed dark map styling
+- Google Maps integration with light enforcement theme
 - Clickable markers for each detection case
-- Optional heatmap layer for high-density areas
 - Auto-centering and zoom on case selection
 - Location-based case clustering
+- Smart patrol route optimization, turn-by-turn guidance, and Waze handoff
 
 ### 🖼️ Evidence Management & Visualization
 - Evidence image viewer with full-resolution display
@@ -110,7 +109,7 @@ A real-time wildlife trade enforcement dashboard powered by AI-driven evidence i
 - **Investigation Guidance:** Use trust scores to prioritize investigation resources
 
 ### 🔔 Notifications & Alerts
-- **Real-Time Notifications:** Browser notifications for new case detections
+- **Real-Time Notifications:** Browser notifications for new case detections and updates
 - **Unread Indicators:** Red dot badges on unread cases
 - **Notification Feed:** Sortable alert carousel with priority badges
 - **System Integration:** Optional browser system notifications
@@ -120,11 +119,6 @@ A real-time wildlife trade enforcement dashboard powered by AI-driven evidence i
 - **Send to Ranger Button:** One-click WhatsApp or email message for each case
 - **Pre-Filled Details:** Case ID, species, location name, and coordinates
 - **Field-Ready:** Enables fast dispatch from the command center to patrol teams
-
-### 🌐 Multi-Language Translation
-- **Translate to English:** On-demand translation of case descriptions via Gemini
-- **Local Context Support:** Helps officers understand Chinese/Malay listings quickly
-- **Preserves Meaning:** Translation preserves names, species, and evidence wording
 
 ### 🔊 Speech Accessibility Features
 - **Auto-Speak Case Name:** When you click on a case in the alert feed, the case name automatically speaks aloud
@@ -145,11 +139,6 @@ A real-time wildlife trade enforcement dashboard powered by AI-driven evidence i
   - Supported languages: English (expandable to additional languages)
 - **Accessibility Support:** Enables enforcement officers with visual or mobility impairment to operate the dashboard independently
 - **Hands-Free Operation:** Particularly useful for field operations where typing is impractical
-
-### 🌓 Dark / Light Mode Toggle
-- **Theme Switch:** Simple toggle in the header
-- **Night Shift Ready:** Dark mode optimized for low-light operations
-- **Daylight Visibility:** Light mode for briefing rooms and reports
 
 ### 📋 Report Generation
 - **AI-Powered Reports:** Automated report generation for prosecution
@@ -298,7 +287,7 @@ service cloud.firestore {
 
 ### No cases appearing in dashboard
 1. Verify Firestore rules allow reads from your IP
-2. Check `VITE_FIREBASE_PROJECT_ID` in `.env.local`
+2. Verify Firebase config in [firebase.ts](firebase.ts)
 3. Ensure cases collection exists in Firestore
 
 ### Gemini AI features not working
@@ -321,9 +310,10 @@ service cloud.firestore {
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `VITE_GEMINI_API_KEY` | Google Gemini API key for AI features | Yes |
-| `VITE_FIREBASE_API_KEY` | Firebase API key | Yes |
-| `VITE_FIREBASE_PROJECT_ID` | Firebase project ID | Yes |
 | `VITE_GOOGLE_MAPS_API_KEY` | Google Maps API key | Yes |
+| `VITE_LOGIN_EMAIL` | Dashboard login email | Yes |
+| `VITE_LOGIN_PASSWORD` | Dashboard login password | Yes |
+| `VITE_LOGIN_KEY` | Dashboard access key | Yes |
 
 ## 📄 License
 

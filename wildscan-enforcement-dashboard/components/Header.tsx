@@ -69,10 +69,10 @@ const Header: React.FC<HeaderProps> = ({
     });
   };
   const statusStyles: Record<HeaderProps["firestoreStatus"], string> = {
-    connected: "bg-emerald-500/10 border-emerald-500 text-emerald-300",
+    connected: "bg-lime-200/60 border-lime-400 text-lime-800",
     connecting: "bg-amber-500/10 border-amber-500 text-amber-300",
     error: "bg-red-500/10 border-red-500 text-red-300",
-    offline: "bg-slate-500/10 border-slate-500 text-slate-300",
+    offline: "bg-lime-200/50 border-lime-400 text-green-900",
   };
 
   const statusLabel: Record<HeaderProps["firestoreStatus"], string> = {
@@ -83,7 +83,7 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="h-16 bg-slate-950 border-b border-emerald-500/20 flex items-center justify-between px-6 z-20 shadow-lg">
+    <header className="h-16 bg-lime-200 border-b border-lime-400/40 flex items-center justify-between px-6 z-20 shadow-lg">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-3">
           <svg viewBox="0 0 64 64" className="h-9 w-9" aria-hidden="true">
@@ -100,8 +100,8 @@ const Header: React.FC<HeaderProps> = ({
             <line x1="14" y1="50" x2="50" y2="14" stroke="#ef4444" strokeWidth="4" strokeLinecap="round" />
           </svg>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-white">WILDSCAN</h1>
-            <p className="text-[10px] text-emerald-400 font-mono uppercase tracking-widest leading-none">
+            <h1 className="text-xl font-bold tracking-tight text-green-950">WILDSCAN</h1>
+            <p className="text-[10px] text-lime-700 font-mono uppercase tracking-widest leading-none">
               Enforcement Dashboard v2.6.0
             </p>
           </div>
@@ -110,7 +110,7 @@ const Header: React.FC<HeaderProps> = ({
 
       <div className="flex-1 max-w-xl mx-8 hidden md:block">
         <div className="relative group flex items-center">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-emerald-400 transition-colors" size={18} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-green-700 group-focus-within:text-lime-700 transition-colors" size={18} />
           <input 
             type="text" 
             placeholder="Search by species, location, or source..."
@@ -119,15 +119,15 @@ const Header: React.FC<HeaderProps> = ({
               setSearchInput(e.target.value);
               onSearch(e.target.value);
             }}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg py-2 pl-10 pr-12 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all text-slate-300"
+            className="w-full bg-white border border-lime-300 rounded-lg py-2 pl-10 pr-12 text-sm focus:outline-none focus:border-lime-400/50 focus:ring-1 focus:ring-lime-400/40 transition-all text-green-900"
           />
           <button
             type="button"
             onClick={handleVoiceSearch}
             className={`absolute right-3 transition-all ${
               isListening 
-                ? 'text-emerald-400 animate-pulse' 
-                : 'text-slate-500 hover:text-emerald-400'
+                ? 'text-lime-700 animate-pulse' 
+                : 'text-green-700 hover:text-lime-700'
             }`}
             title={isListening ? 'Stop listening' : 'Start voice search'}
             aria-label={isListening ? 'Stop listening' : 'Start voice search'}
@@ -151,36 +151,36 @@ const Header: React.FC<HeaderProps> = ({
             className="relative cursor-pointer group"
             aria-label="Toggle notifications"
           >
-            <Bell className="text-slate-400 group-hover:text-emerald-400 transition-colors" size={20} />
+            <Bell className="text-green-800 group-hover:text-lime-700 transition-colors" size={20} />
             {hasUnreadNotifications && (
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-950"></span>
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-lime-300"></span>
             )}
           </button>
 
           {isNotificationsOpen && (
-            <div className="absolute right-0 mt-3 w-80 bg-slate-950/95 border border-emerald-500/20 rounded-xl shadow-2xl z-50 overflow-hidden">
-              <div className="px-4 py-3 text-[10px] uppercase tracking-widest text-emerald-400 font-mono border-b border-slate-800">
+            <div className="absolute right-0 mt-3 w-80 bg-white/95 border border-lime-400/40 rounded-xl shadow-2xl z-50 overflow-hidden">
+              <div className="px-4 py-3 text-[10px] uppercase tracking-widest text-lime-700 font-mono border-b border-lime-300">
                 Notifications
               </div>
               <div className="max-h-72 overflow-y-auto">
                 {notificationCases.length === 0 ? (
-                  <div className="px-4 py-6 text-xs text-slate-500 text-center">No new cases yet.</div>
+                  <div className="px-4 py-6 text-xs text-green-700 text-center">No new cases yet.</div>
                 ) : (
                   notificationCases.map((notice) => (
                     <button
                       key={notice.id}
                       onClick={() => onNotificationClick(notice.caseId)}
-                      className={`w-full text-left px-4 py-3 border-b border-slate-800 hover:bg-slate-900/70 transition-colors relative ${notice.isRead ? "opacity-70" : ""}`}
+                      className={`w-full text-left px-4 py-3 border-b border-lime-300 hover:bg-white/70 transition-colors relative ${notice.isRead ? "opacity-70" : ""}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1">
-                          <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono">
+                          <div className="text-[11px] uppercase tracking-widest text-lime-700 font-mono">
                             {notice.title}
                           </div>
-                          <div className="mt-1 text-[10px] text-slate-400 font-mono uppercase tracking-widest">
+                          <div className="mt-1 text-[10px] text-green-800 font-mono uppercase tracking-widest">
                             {notice.location}
                           </div>
-                          <div className="mt-2 text-[10px] text-slate-500 font-mono">{notice.time}</div>
+                          <div className="mt-2 text-[10px] text-green-700 font-mono">{notice.time}</div>
                         </div>
                         {!notice.isRead && (
                           <div className="flex-shrink-0 pt-1">
@@ -198,7 +198,7 @@ const Header: React.FC<HeaderProps> = ({
         <button
           type="button"
           onClick={onLogout}
-          className="rounded-lg border border-rose-500/60 bg-rose-500/10 px-4 py-2 text-[11px] font-mono uppercase tracking-widest text-rose-200 hover:border-rose-400 hover:text-rose-100"
+          className="rounded-lg border border-red-950 bg-red-950 px-4 py-2 text-[11px] font-mono uppercase tracking-widest text-red-50 hover:bg-red-900"
         >
           Logout
         </button>

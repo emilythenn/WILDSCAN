@@ -46,44 +46,44 @@ const LoginPage: React.FC<LoginPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-6">
-      <div className="w-full max-w-md border border-emerald-500/20 bg-slate-900/70 backdrop-blur-md shadow-2xl rounded-2xl p-8">
-        <div className="text-xs uppercase tracking-[0.35em] text-emerald-400 font-mono">
+    <div className="min-h-screen bg-lime-200 text-green-950 flex items-center justify-center px-6">
+      <div className="w-full max-w-md border border-lime-400/40 bg-white/70 backdrop-blur-md shadow-2xl rounded-2xl p-8">
+        <div className="text-xs uppercase tracking-[0.35em] text-lime-700 font-mono">
           Wildscan Secure Access
         </div>
-        <h1 className="mt-3 text-2xl font-semibold text-slate-100">Enforcement Login</h1>
-        <p className="mt-2 text-sm text-slate-400">
+        <h1 className="mt-3 text-2xl font-semibold text-green-950">Enforcement Login</h1>
+        <p className="mt-2 text-sm text-green-800">
           Use the fixed credentials and access key to continue.
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-1">
-            <label className="text-xs uppercase tracking-widest text-slate-400">Email</label>
+            <label className="text-xs uppercase tracking-widest text-green-800">Email</label>
             <input
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500/70"
+              className="w-full rounded-lg border border-lime-300 bg-white/80 px-3 py-2 text-sm text-green-950 outline-none focus:border-lime-400/70"
               placeholder="xxxx@gmail.com"
               required
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs uppercase tracking-widest text-slate-400">Password</label>
+            <label className="text-xs uppercase tracking-widest text-green-800">Password</label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="w-full rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 pr-16 text-sm text-slate-100 outline-none focus:border-emerald-500/70"
+                className="w-full rounded-lg border border-lime-300 bg-white/80 px-3 py-2 pr-16 text-sm text-green-950 outline-none focus:border-lime-400/70"
                 placeholder="Enter your password"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((prev) => !prev)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs uppercase tracking-widest text-emerald-400 hover:text-emerald-300"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs uppercase tracking-widest text-lime-700 hover:text-lime-800"
               >
                 {showPassword ? "Hide" : "Show"}
               </button>
@@ -91,12 +91,12 @@ const LoginPage: React.FC<LoginPageProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs uppercase tracking-widest text-slate-400">Access Key</label>
+            <label className="text-xs uppercase tracking-widest text-green-800">Access Key</label>
             <input
               type="text"
               value={accessKey}
               onChange={(event) => setAccessKey(event.target.value)}
-              className="w-full rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-500/70"
+              className="w-full rounded-lg border border-lime-300 bg-white/80 px-3 py-2 text-sm text-green-950 outline-none focus:border-lime-400/70"
               placeholder="WILD-ACCESS-XXXX"
               required
             />
@@ -110,7 +110,7 @@ const LoginPage: React.FC<LoginPageProps> = ({
 
           <button
             type="submit"
-            className="w-full rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
+            className="w-full rounded-lg bg-lime-600/90 px-4 py-2 text-sm font-semibold text-green-950 transition hover:bg-white0"
           >
             Login
           </button>

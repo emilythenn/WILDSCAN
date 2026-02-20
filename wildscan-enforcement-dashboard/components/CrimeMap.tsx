@@ -85,7 +85,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
   }, [markerDetections]);
 
   const getMarkerColor = useCallback((d: Detection) => {
-    return d.priority === 'High' ? '#ef4444' : d.priority === 'Medium' ? '#f59e0b' : '#10b981';
+    return d.priority === 'High' ? '#ef4444' : d.priority === 'Medium' ? '#f59e0b' : '#65a30d';
   }, []);
 
   useEffect(() => {
@@ -133,20 +133,20 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       .join(" • ");
 
     return `
-      <div style="font-family: 'Inter', sans-serif; font-size: 12px; color: #ffffff; background: #0b1220; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.4); box-shadow: 0 12px 30px rgba(2, 6, 23, 0.65); min-width: 210px;">
-        <div style="font-weight: 800; margin-bottom: 6px; color: #ffffff;">${d.animal_type || "Case"}</div>
-        <div style="font-size: 10px; color: #34d399; text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 6px; font-weight: 700;">Case ${d.id}</div>
-        ${locationLabel ? `<div style="margin-bottom: 6px; color: #ffffff; font-weight: 700;">${locationLabel}</div>` : ""}
+      <div style="font-family: 'Inter', sans-serif; font-size: 12px; color: #1f2a1f; background: #f7f9e3; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(132, 204, 22, 0.5); box-shadow: 0 12px 30px rgba(88, 108, 54, 0.25); min-width: 210px;">
+        <div style="font-weight: 800; margin-bottom: 6px; color: #1f2a1f;">${d.animal_type || "Case"}</div>
+        <div style="font-size: 10px; color: #3f6212; text-transform: uppercase; letter-spacing: 0.16em; margin-bottom: 6px; font-weight: 700;">Case ${d.id}</div>
+        ${locationLabel ? `<div style="margin-bottom: 6px; color: #1f2a1f; font-weight: 700;">${locationLabel}</div>` : ""}
         <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
-          ${priority ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(16, 185, 129, 0.55); background: rgba(16, 185, 129, 0.18); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #ffffff; font-weight: 700;">${priority}</span>` : ""}
-          ${confidence ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.5); background: rgba(148, 163, 184, 0.15); font-size: 10px; color: #ffffff; font-weight: 700;">${confidence} Conf</span>` : ""}
+          ${priority ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(132, 204, 22, 0.6); background: rgba(132, 204, 22, 0.2); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #1f2a1f; font-weight: 700;">${priority}</span>` : ""}
+          ${confidence ? `<span style="padding: 2px 6px; border-radius: 999px; border: 1px solid rgba(101, 163, 13, 0.45); background: rgba(163, 230, 53, 0.25); font-size: 10px; color: #1f2a1f; font-weight: 700;">${confidence} Conf</span>` : ""}
         </div>
-        <div style="color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;">Case Coords: ${coords}</div>
-        <div style="margin-top: 6px; color: #ffffff; font-size: 11px; font-weight: 700;">Current Location: ${currentCoords}</div>
+        <div style="color: #1f2a1f; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;">Case Coords: ${coords}</div>
+        <div style="margin-top: 6px; color: #1f2a1f; font-size: 11px; font-weight: 700;">Current Location: ${currentCoords}</div>
         ${sameLocationCases.length > 0 ? `
-          <div style="margin-top: 8px; color: #e2e8f0; font-size: 10px; font-weight: 700;">
+          <div style="margin-top: 8px; color: #5c6a3a; font-size: 10px; font-weight: 700;">
             Other cases nearby (${sameLocationCases.length}):
-            <div style="margin-top: 4px; color: #ffffff; font-weight: 700;">${relatedList}${sameLocationCases.length > 3 ? " ..." : ""}</div>
+            <div style="margin-top: 4px; color: #1f2a1f; font-weight: 700;">${relatedList}${sameLocationCases.length > 3 ? " ..." : ""}</div>
           </div>
         ` : ""}
       </div>
@@ -156,10 +156,10 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
   const buildOriginInfoContent = useCallback((address?: string | null, location?: { lat: number; lng: number } | null) => {
     const coords = location ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}` : "Unknown";
     return `
-      <div style="font-family: 'Inter', sans-serif; font-size: 12px; color: #ffffff; background: #0b1220; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.5); box-shadow: 0 12px 30px rgba(2, 6, 23, 0.65); min-width: 200px;">
-        <div style="font-weight: 700; margin-bottom: 6px; color: #ffffff;">Current Location (A)</div>
-        <div style="font-size: 10px; color: #e2e8f0; font-weight: 700;">${address || "Address unavailable"}</div>
-        <div style="margin-top: 6px; color: #ffffff; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;">${coords}</div>
+      <div style="font-family: 'Inter', sans-serif; font-size: 12px; color: #1f2a1f; background: #f7f9e3; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(101, 163, 13, 0.35); box-shadow: 0 12px 30px rgba(88, 108, 54, 0.25); min-width: 200px;">
+        <div style="font-weight: 700; margin-bottom: 6px; color: #1f2a1f;">Current Location (A)</div>
+        <div style="font-size: 10px; color: #5c6a3a; font-weight: 700;">${address || "Address unavailable"}</div>
+        <div style="margin-top: 6px; color: #1f2a1f; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;">${coords}</div>
       </div>
     `;
   }, []);
@@ -187,12 +187,12 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
   }, []);
 
   const mapStyles = useMemo(() => ([
-    { elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
-    { elementType: 'labels.text.fill', stylers: [{ color: '#475569' }] },
-    { elementType: 'labels.text.stroke', stylers: [{ color: '#0f172a' }] },
-    { featureType: 'administrative', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
-    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#020617' }] },
-    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+    { elementType: 'geometry', stylers: [{ color: '#f3f7d5' }] },
+    { elementType: 'labels.text.fill', stylers: [{ color: '#5c6a3a' }] },
+    { elementType: 'labels.text.stroke', stylers: [{ color: '#e7efbe' }] },
+    { featureType: 'administrative', elementType: 'geometry', stylers: [{ color: '#e1e7b3' }] },
+    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#cfe1a5' }] },
+    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#e7efbe' }] },
     { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   ]), []);
 
@@ -653,7 +653,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       <div ref={mapRef} className="w-full h-full" />
 
       {mapError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 text-slate-200 text-xs font-mono tracking-widest uppercase">
+        <div className="absolute inset-0 flex items-center justify-center bg-white/80 text-green-900 text-xs font-mono tracking-widest uppercase">
           {mapError}
         </div>
       )}
@@ -661,14 +661,14 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       {/* HUD Overlays */}
       <div className="absolute top-4 right-4 space-y-2">
         {selectedDetection && (
-          <div className="bg-slate-950/80 border border-emerald-500/20 px-3 py-1 rounded backdrop-blur text-[10px] font-mono text-emerald-400 pointer-events-none">
+          <div className="bg-white/80 border border-lime-400/40 px-3 py-1 rounded backdrop-blur text-[10px] font-mono text-lime-700 pointer-events-none">
             SAT_LOCK: ACTIVE
           </div>
         )}
         <button
           type="button"
           onClick={handleSeeAll}
-          className="px-3 py-2 rounded border border-emerald-500/40 bg-emerald-500/10 text-[10px] font-mono uppercase tracking-widest text-emerald-200 hover:border-emerald-400 hover:text-emerald-100"
+          className="px-3 py-2 rounded border border-lime-500/60 bg-lime-200/60 text-[10px] font-mono uppercase tracking-widest text-lime-900 hover:border-lime-600 hover:text-lime-800"
         >
           See All
         </button>
@@ -676,22 +676,22 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
 
       {/* Crosshair Simulation Overlay */}
       {selectedDetection && (
-        <div className="absolute inset-0 pointer-events-none border border-emerald-500/10">
-          <div className="absolute top-1/2 left-0 w-8 h-px bg-emerald-500/30"></div>
-          <div className="absolute top-1/2 right-0 w-8 h-px bg-emerald-500/30"></div>
-          <div className="absolute top-0 left-1/2 w-px h-8 bg-emerald-500/30"></div>
-          <div className="absolute bottom-0 left-1/2 w-px h-8 bg-emerald-500/30"></div>
+        <div className="absolute inset-0 pointer-events-none border border-lime-300/60">
+          <div className="absolute top-1/2 left-0 w-8 h-px bg-lime-300/50"></div>
+          <div className="absolute top-1/2 right-0 w-8 h-px bg-lime-300/50"></div>
+          <div className="absolute top-0 left-1/2 w-px h-8 bg-lime-300/50"></div>
+          <div className="absolute bottom-0 left-1/2 w-px h-8 bg-lime-300/50"></div>
         </div>
       )}
 
       <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-2">
         {selectedDetection && (
-          <div className="bg-slate-900/85 backdrop-blur-md border border-emerald-500/30 p-3 rounded-lg shadow-2xl">
-            <h3 className="text-emerald-400 text-[10px] uppercase font-mono mb-2">Smart Patrol Route</h3>
+          <div className="bg-white/85 backdrop-blur-md border border-lime-400/50 p-3 rounded-lg shadow-2xl">
+            <h3 className="text-lime-700 text-[10px] uppercase font-mono mb-2">Smart Patrol Route</h3>
             <button
               type="button"
               onClick={handlePatrolRoute}
-              className="px-3 py-2 rounded border border-sky-400/60 bg-sky-400/10 text-[10px] font-mono uppercase tracking-widest text-sky-200 hover:border-sky-300 hover:text-sky-100"
+              className="px-3 py-2 rounded border border-green-900 bg-green-900 text-[10px] font-mono uppercase tracking-widest text-white hover:bg-green-800 hover:border-green-800"
             >
               Optimize Route
             </button>
@@ -707,30 +707,30 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
             <button
               type="button"
               onClick={isGuiding ? stopGuidance : handleStartGuidance}
-              className="mt-2 px-3 py-2 rounded border border-emerald-400/60 bg-emerald-500/10 text-[10px] font-mono uppercase tracking-widest text-emerald-200 hover:border-emerald-300 hover:text-emerald-100"
+              className="mt-2 px-3 py-2 rounded border border-lime-600/60 bg-lime-200/60 text-[10px] font-mono uppercase tracking-widest text-lime-900 hover:border-lime-600 hover:text-lime-800"
             >
               {isGuiding ? "Stop Guidance" : "Start Guidance"}
             </button>
             {routeSummary && (
-              <div className="mt-2 text-[10px] text-slate-200 font-mono">
+              <div className="mt-2 text-[10px] text-green-900 font-mono">
                 ETA: {routeSummary.duration || "N/A"} • {routeSummary.distance || "N/A"}
               </div>
             )}
             {routeSteps.length > 0 && (
-              <div className="mt-2 text-[10px] text-slate-300 font-mono">
+              <div className="mt-2 text-[10px] text-green-900 font-mono">
                 Step {Math.min(currentStepIndex + 1, routeSteps.length)} of {routeSteps.length}
               </div>
             )}
             {routeSteps[currentStepIndex] && (
-              <div className="mt-1 text-[10px] text-slate-200 font-mono">
+              <div className="mt-1 text-[10px] text-green-900 font-mono">
                 Next: {routeSteps[currentStepIndex].instruction}
               </div>
             )}
             {routeStatus && (
-              <div className="mt-2 text-[10px] text-slate-400 font-mono">{routeStatus}</div>
+              <div className="mt-2 text-[10px] text-green-800 font-mono">{routeStatus}</div>
             )}
             {guidanceStatus && (
-              <div className="mt-2 text-[10px] text-emerald-300 font-mono">{guidanceStatus}</div>
+              <div className="mt-2 text-[10px] text-lime-800 font-mono">{guidanceStatus}</div>
             )}
           </div>
         )}

@@ -571,7 +571,7 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
 
   if (!detection) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-slate-500 p-8 text-center bg-slate-900/40">
+      <div className="flex-1 flex flex-col items-center justify-center text-green-700 p-8 text-center bg-white/40">
         <ShieldCheck size={48} className="mb-4 opacity-10" />
         <p className="text-xs font-mono uppercase tracking-[0.2em] opacity-40">Awaiting Target Selection</p>
       </div>
@@ -584,12 +584,12 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
   const priorityIconColor: Record<Detection["priority"], string> = {
     High: "text-red-400",
     Medium: "text-amber-400",
-    Low: "text-emerald-400",
+    Low: "text-lime-700",
   };
   const priorityBadgeClass: Record<Detection["priority"], string> = {
     High: "bg-red-500/10 border-red-500 text-red-500",
     Medium: "bg-amber-500/10 border-amber-500 text-amber-400",
-    Low: "bg-emerald-500/10 border-emerald-500 text-emerald-500",
+    Low: "bg-lime-200/60 border-lime-400 text-lime-700",
   };
   const localRisk = buildLocalRiskSummary(detection);
 
@@ -1674,19 +1674,19 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
       {(isGenerating || reportReady) && (
         <div className="absolute inset-0 z-50 flex items-center justify-center p-8 font-mono overflow-hidden">
           {/* Glassmorphism Background Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 via-slate-950/90 to-black/95 backdrop-blur-xl"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-lime-50/90 via-lime-100/80 to-white/90 backdrop-blur-xl"></div>
           
           {/* Glassmorphism Card */}
-          <div className="relative w-full max-w-3xl bg-slate-900/40 backdrop-blur-2xl border border-emerald-500/30 rounded-2xl shadow-[0_8px_32px_0_rgba(16,185,129,0.15)] p-8 overflow-hidden">
+          <div className="relative w-full max-w-3xl bg-white/40 backdrop-blur-2xl border border-lime-400/50 rounded-2xl shadow-[0_8px_32px_0_rgba(132,204,22,0.2)] p-8 overflow-hidden">
             {/* Gradient Accents */}
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-500 to-transparent opacity-50"></div>
-            <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-500 to-transparent opacity-50"></div>
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-lime-500 to-transparent opacity-50"></div>
+            <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-lime-500 to-transparent opacity-50"></div>
             
             {/* Cancel Icon */}
             {reportReady && (
               <button
                 onClick={() => setReportReady(false)}
-                className="absolute top-4 right-4 z-20 p-2 rounded-lg bg-slate-800/60 backdrop-blur-sm border border-slate-700/50 text-slate-400 hover:text-emerald-400 hover:bg-slate-700/60 hover:border-emerald-500/30 transition-all duration-200 group"
+                className="absolute top-4 right-4 z-20 p-2 rounded-lg bg-lime-200/70 backdrop-blur-sm border border-lime-300/50 text-green-800 hover:text-lime-700 hover:bg-lime-200/70 hover:border-lime-400/50 transition-all duration-200 group"
                 aria-label="Close"
               >
                 <X size={18} className="group-hover:rotate-90 transition-transform duration-200" />
@@ -1695,7 +1695,7 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
             
             {/* Content */}
             <div className="relative z-10">
-              <div className="flex items-center gap-2 text-emerald-400 mb-6">
+              <div className="flex items-center gap-2 text-lime-700 mb-6">
                 <Activity size={20} className="animate-pulse" />
                 <h3 className="text-sm font-bold uppercase tracking-widest">
                   {reportReady ? "Prosecution Report Ready" : "Generating Prosecution Report"}
@@ -1704,59 +1704,59 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
               
               {!reportReady ? (
                 <>
-                  <div className="flex-1 space-y-2 text-[10px] text-emerald-400/80 overflow-y-auto max-h-96 bg-slate-950/30 backdrop-blur-sm rounded-lg p-4 border border-emerald-500/10">
+                  <div className="flex-1 space-y-2 text-[10px] text-lime-700/80 overflow-y-auto max-h-96 bg-lime-200/30 backdrop-blur-sm rounded-lg p-4 border border-lime-300/60">
                     {reportLogs.map((log, i) => (
                       <div key={i} className="animate-in slide-in-from-left duration-300 py-1">
                         {log}
                       </div>
                     ))}
                   </div>
-                  <div className="mt-4 pt-4 border-t border-emerald-500/20">
-                    <div className="w-full h-2 bg-slate-950/50 backdrop-blur-sm rounded-full overflow-hidden border border-emerald-500/20">
-                      <div className="h-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-500 animate-[progress_5s_linear_infinite] shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                  <div className="mt-4 pt-4 border-t border-lime-400/40">
+                    <div className="w-full h-2 bg-white/60 backdrop-blur-sm rounded-full overflow-hidden border border-lime-400/40">
+                      <div className="h-full bg-gradient-to-r from-lime-500 via-lime-400 to-lime-500 animate-[progress_5s_linear_infinite] shadow-[0_0_10px_rgba(132,204,22,0.5)]"></div>
                     </div>
                   </div>
                 </>
               ) : (
                 <div className="flex-1 flex flex-col gap-4">
-                  <div className="text-xs text-slate-300 leading-relaxed bg-gradient-to-br from-emerald-500/10 via-slate-900/40 to-slate-900/20 backdrop-blur-md border border-emerald-500/30 p-6 rounded-xl shadow-[0_4px_16px_0_rgba(16,185,129,0.1)]">
-                    <div className="text-[11px] uppercase tracking-widest text-emerald-400 font-mono font-bold">Report Summary</div>
-                    <div className="mt-2 text-slate-200">
+                  <div className="text-xs text-green-900 leading-relaxed bg-gradient-to-br from-lime-500/10 via-lime-100/60 to-lime-50/60 backdrop-blur-md border border-lime-400/50 p-6 rounded-xl shadow-[0_4px_16px_0_rgba(132,204,22,0.18)]">
+                    <div className="text-[11px] uppercase tracking-widest text-lime-700 font-mono font-bold">Report Summary</div>
+                    <div className="mt-2 text-green-900">
                       Case {detection.id} prepared with evidence highlights and AI risk assessment.
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
-                      <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-lg px-3 py-2 shadow-sm">
-                        <span className="text-slate-400">Priority:</span> <span className="text-emerald-300 font-semibold">{detection.priority}</span>
+                      <div className="bg-white/60 backdrop-blur-sm border border-lime-300/50 rounded-lg px-3 py-2 shadow-sm">
+                        <span className="text-green-800">Priority:</span> <span className="text-lime-800 font-semibold">{detection.priority}</span>
                       </div>
-                      <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-lg px-3 py-2 shadow-sm">
-                        <span className="text-slate-400">Confidence:</span> <span className="text-emerald-300 font-semibold">{(detection.confidence * 100).toFixed(0)}%</span>
+                      <div className="bg-white/60 backdrop-blur-sm border border-lime-300/50 rounded-lg px-3 py-2 shadow-sm">
+                        <span className="text-green-800">Confidence:</span> <span className="text-lime-800 font-semibold">{(detection.confidence * 100).toFixed(0)}%</span>
                       </div>
-                      <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-lg px-3 py-2 shadow-sm">
-                        <span className="text-slate-400">Location:</span> <span className="text-emerald-300 font-semibold">{detection.location_name}</span>
+                      <div className="bg-white/60 backdrop-blur-sm border border-lime-300/50 rounded-lg px-3 py-2 shadow-sm">
+                        <span className="text-green-800">Location:</span> <span className="text-lime-800 font-semibold">{detection.location_name}</span>
                       </div>
-                      <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-700/50 rounded-lg px-3 py-2 shadow-sm">
-                        <span className="text-slate-400">Source:</span> <span className="text-emerald-300 font-semibold">{detection.source}</span>
+                      <div className="bg-white/60 backdrop-blur-sm border border-lime-300/50 rounded-lg px-3 py-2 shadow-sm">
+                        <span className="text-green-800">Source:</span> <span className="text-lime-800 font-semibold">{detection.source}</span>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
                       onClick={handleDownloadPdf}
-                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs shadow-[0_4px_16px_0_rgba(16,185,129,0.3)] hover:shadow-[0_6px_20px_0_rgba(16,185,129,0.4)] transition-all duration-200 active:scale-95"
+                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-lime-500 to-lime-700 hover:from-lime-400 hover:to-lime-600 text-green-950 font-bold text-xs shadow-[0_4px_16px_0_rgba(132,204,22,0.32)] hover:shadow-[0_6px_20px_0_rgba(132,204,22,0.4)] transition-all duration-200 active:scale-95"
                     >
                       <Download size={14} />
                       Download PDF
                     </button>
                     <button
                       onClick={handleDownloadWord}
-                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-800/60 backdrop-blur-sm text-slate-100 font-bold text-xs border border-slate-700/50 hover:bg-slate-700/60 hover:border-slate-600 shadow-sm hover:shadow-md transition-all duration-200 active:scale-95"
+                      className="flex items-center gap-2 px-6 py-3 rounded-xl bg-lime-200/70 backdrop-blur-sm text-green-950 font-bold text-xs border border-lime-300/50 hover:bg-lime-200/70 hover:border-lime-400 shadow-sm hover:shadow-md transition-all duration-200 active:scale-95"
                     >
                       <Download size={14} />
                       Download Word
                     </button>
                     <button
                       onClick={() => setReportReady(false)}
-                      className="ml-auto text-[10px] uppercase tracking-widest text-slate-400 hover:text-emerald-400 transition-colors px-4 py-2 rounded-lg hover:bg-slate-800/30 backdrop-blur-sm"
+                      className="ml-auto text-[10px] uppercase tracking-widest text-green-800 hover:text-lime-700 transition-colors px-4 py-2 rounded-lg hover:bg-lime-200/30 backdrop-blur-sm"
                     >
                       Close
                     </button>
@@ -1768,15 +1768,15 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
         </div>
       )}
 
-      <div className="p-6 border-b border-emerald-500/20">
+      <div className="p-6 border-b border-lime-400/40">
         <div className="flex items-start justify-between mb-2">
           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${priorityBadgeClass[detection.priority]}`}>
             {detection.priority} Priority Case
           </span>
-          <div className="text-[10px] text-slate-500 font-mono">ID: {detection.id}</div>
+          <div className="text-[10px] text-green-700 font-mono">ID: {detection.id}</div>
         </div>
-        <h2 className="text-2xl font-bold text-slate-100">{detection.animal_type}</h2>
-        <div className="flex items-center gap-2 text-emerald-500/70 text-xs font-mono mt-1">
+        <h2 className="text-2xl font-bold text-green-950">{detection.animal_type}</h2>
+        <div className="flex items-center gap-2 text-lime-700/70 text-xs font-mono mt-1">
           <Clock size={12} />
           <span>Detected {formattedDate}</span>
         </div>
@@ -1785,7 +1785,7 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] uppercase font-mono text-slate-500 tracking-widest">Visual Evidence</label>
+            <label className="text-[10px] uppercase font-mono text-green-700 tracking-widest">Visual Evidence</label>
             <div className="flex items-center gap-3">
               {isSpeechSupported && (
                 <button
@@ -1793,8 +1793,8 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                   onClick={() => setIsReadAloudActive(!isReadAloudActive)}
                   className={`text-[10px] uppercase font-mono tracking-widest transition-all flex items-center gap-1 ${
                     isReadAloudActive
-                      ? 'text-emerald-400 hover:text-emerald-300'
-                      : 'text-slate-500 hover:text-emerald-400'
+                      ? 'text-lime-700 hover:text-lime-800'
+                      : 'text-green-700 hover:text-lime-700'
                   }`}
                   title={isReadAloudActive ? 'Stop reading case details' : 'Read case details aloud'}
                   aria-label={isReadAloudActive ? 'Stop reading case details' : 'Read case details aloud'}
@@ -1809,13 +1809,13 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
               <button
                 type="button"
                 onClick={() => setIsImageFit((prev) => !prev)}
-                className="text-[10px] uppercase font-mono tracking-widest text-emerald-400 hover:text-emerald-300 transition-colors"
+                className="text-[10px] uppercase font-mono tracking-widest text-lime-700 hover:text-lime-800 transition-colors"
               >
                 {isImageFit ? "Fill" : "Fit"}
               </button>
             </div>
           </div>
-          <div className="aspect-video w-full rounded-lg overflow-hidden border border-slate-700/50 bg-slate-800 relative group hover:border-slate-600/50 transition-colors duration-300">
+          <div className="aspect-video w-full rounded-lg overflow-hidden border border-lime-300/50 bg-lime-200 relative group hover:border-lime-400/50 transition-colors duration-300">
             {detection.image_url ? (
               <img
                 src={detection.image_url}
@@ -1823,33 +1823,33 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                 className={`w-full h-full ${isImageFit ? "object-contain" : "object-cover"} grayscale-[0.3] group-hover:grayscale-0 transition-all duration-500`}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 font-mono">
+              <div className="w-full h-full flex items-center justify-center text-xs text-green-700 font-mono">
                 Evidence image unavailable
               </div>
             )}
-            <div className="absolute bottom-4 right-4 bg-slate-950/70 backdrop-blur-sm px-3 py-2 rounded-lg text-[10px] font-mono text-slate-300 border border-slate-700/50 flex items-center gap-1">
+            <div className="absolute bottom-4 right-4 bg-white/70 backdrop-blur-sm px-3 py-2 rounded-lg text-[10px] font-mono text-green-900 border border-lime-300/50 flex items-center gap-1">
               Confidence: {(detection.confidence * 100).toFixed(1)}%
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 rounded-lg transition-colors duration-200">
-            <p className="text-[9px] text-slate-400 font-mono uppercase mb-2 font-semibold tracking-wider">Marketplace</p>
+          <div className="bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 rounded-lg transition-colors duration-200">
+            <p className="text-[9px] text-green-800 font-mono uppercase mb-2 font-semibold tracking-wider">Marketplace</p>
             <div className="flex items-center gap-2">
-               <Share2 size={16} className="text-slate-400" />
-               <span className="text-sm font-semibold truncate text-slate-100">{detection.platform_source || detection.source}</span>
+               <Share2 size={16} className="text-green-800" />
+               <span className="text-sm font-semibold truncate text-green-950">{detection.platform_source || detection.source}</span>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setShowGeoLocationModal(true)}
-            className="bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 rounded-lg transition-colors duration-200 cursor-pointer text-left"
+            className="bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 rounded-lg transition-colors duration-200 cursor-pointer text-left"
           >
-            <p className="text-[9px] text-slate-400 font-mono uppercase mb-2 font-semibold tracking-wider">Geo-Location</p>
+            <p className="text-[9px] text-green-800 font-mono uppercase mb-2 font-semibold tracking-wider">Geo-Location</p>
             <div className="flex items-center gap-2">
-               <MapPin size={16} className="text-slate-400" />
-               <span className="text-sm font-semibold truncate text-slate-100">{detection.location_name}</span>
+               <MapPin size={16} className="text-green-800" />
+               <span className="text-sm font-semibold truncate text-green-950">{detection.location_name}</span>
             </div>
           </button>
           <button
@@ -1860,47 +1860,47 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                 explainTrustScore();
               }
             }}
-            className="bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 rounded-lg transition-colors duration-200 cursor-pointer text-left col-span-2"
+            className="bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 rounded-lg transition-colors duration-200 cursor-pointer text-left col-span-2"
           >
-            <p className="text-[9px] text-slate-400 font-mono uppercase mb-2 font-semibold tracking-wider">Trust Score - Matching Reports</p>
+            <p className="text-[9px] text-green-800 font-mono uppercase mb-2 font-semibold tracking-wider">Trust Score - Matching Reports</p>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                 <Activity size={16} className="text-slate-400" />
-                 <span className="text-sm font-semibold text-slate-100">{detection.trust_score ?? 0} similar reports</span>
+                 <Activity size={16} className="text-green-800" />
+                 <span className="text-sm font-semibold text-green-950">{detection.trust_score ?? 0} similar reports</span>
               </div>
-              <span className="text-[10px] text-slate-500">Click to view</span>
+              <span className="text-[10px] text-green-700">Click to view</span>
             </div>
           </button>
         </div>
 
-        <div className="bg-slate-800/40 border border-slate-700/50 p-4 rounded-lg">
+        <div className="bg-lime-200/60 border border-lime-300/50 p-4 rounded-lg">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Quick Action</p>
-            <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider">Send to Ranger</span>
+            <p className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Quick Action</p>
+            <span className="text-[9px] text-green-700 font-mono uppercase tracking-wider">Send to Ranger</span>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={handleSendRangerWhatsApp}
-              className="px-4 py-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono uppercase tracking-widest hover:bg-emerald-500/30 hover:border-emerald-500/50 transition-colors duration-200"
+              className="px-4 py-2.5 rounded-lg bg-lime-300/40 border border-lime-400/50 text-lime-800 text-[10px] font-mono uppercase tracking-widest hover:bg-lime-300/50 hover:border-lime-400/50 transition-colors duration-200"
             >
               WhatsApp
             </button>
             <button
               type="button"
               onClick={handleSendRangerEmail}
-              className="px-4 py-2.5 rounded-lg bg-slate-700/30 border border-slate-600/50 text-slate-300 text-[10px] font-mono uppercase tracking-widest hover:bg-slate-700/50 hover:border-slate-600 transition-colors duration-200"
+              className="px-4 py-2.5 rounded-lg bg-lime-200/60 border border-lime-400/50 text-green-900 text-[10px] font-mono uppercase tracking-widest hover:bg-lime-200/70 hover:border-lime-400 transition-colors duration-200"
             >
               Email
             </button>
           </div>
-          <p className="text-[10px] text-slate-500 mt-3">
+          <p className="text-[10px] text-green-700 mt-3">
             Prefilled with case ID, species, and coordinates.
           </p>
         </div>
 
-        <div className="bg-slate-800/40 border border-slate-700/50 p-4 rounded-lg">
-          <p className="text-[9px] text-slate-400 font-mono uppercase mb-3 tracking-wider font-semibold">Case Status</p>
+        <div className="bg-lime-200/60 border border-lime-300/50 p-4 rounded-lg">
+          <p className="text-[9px] text-green-800 font-mono uppercase mb-3 tracking-wider font-semibold">Case Status</p>
           <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest">
             {(["Pending", "Investigating", "Resolved"] as Detection["status"][]).map((status) => (
               <button
@@ -1914,8 +1914,8 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                 }}
                 className={`px-3 py-2 rounded-lg border transition-all duration-200 ${
                   localStatus === status
-                    ? "bg-emerald-500/30 border-emerald-500/50 text-emerald-200"
-                    : "bg-slate-700/30 border-slate-600/50 text-slate-400 hover:bg-slate-700/50 hover:border-slate-600"
+                    ? "bg-lime-300/50 border-lime-400/50 text-lime-900"
+                    : "bg-lime-200/60 border-lime-400/50 text-green-800 hover:bg-lime-200/70 hover:border-lime-400"
                 }`}
               >
                 {status}
@@ -1924,99 +1924,99 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
           </div>
         </div>
 
-        <div className="bg-slate-900/40 border border-slate-700/50 p-4 rounded-lg">
-          <div className="mb-3 pb-3 border-b border-slate-700/30">
-            <p className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Case Information</p>
-            <p className="text-[8px] text-slate-500 mt-1">Detection metadata and evidence details</p>
+        <div className="bg-white/40 border border-lime-300/50 p-4 rounded-lg">
+          <div className="mb-3 pb-3 border-b border-lime-300/30">
+            <p className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Case Information</p>
+            <p className="text-[8px] text-green-700 mt-1">Detection metadata and evidence details</p>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Detected Species</span>
-              <div className="mt-2 text-slate-100 font-medium">
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Detected Species</span>
+              <div className="mt-2 text-green-950 font-medium">
                 {detection.species_detected || detection.detected_species_name || detection.animal_type || "N/A"}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Platform Source</span>
-              <div className="mt-2 text-slate-100 font-medium">
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Platform Source</span>
+              <div className="mt-2 text-green-950 font-medium">
                 {detection.platform_source || detection.source || "N/A"}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Location (State)</span>
-              <div className="mt-2 text-slate-100 font-medium">{detection.location_name || "Unknown"}</div>
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Location (State)</span>
+              <div className="mt-2 text-green-950 font-medium">{detection.location_name || "Unknown"}</div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200 col-span-2">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Full Address</span>
-              <div className="mt-2 text-slate-100 leading-relaxed break-words">{fullAddress || "N/A"}</div>
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200 col-span-2">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Full Address</span>
+              <div className="mt-2 text-green-950 leading-relaxed break-words">{fullAddress || "N/A"}</div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Priority</span>
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Priority</span>
               <div className="mt-2">
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono uppercase border ${priorityBadgeClass[detection.priority]}`}>
                   {detection.priority}
                 </span>
               </div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">AI Scanned At</span>
-              <div className="mt-2 text-slate-100">{formattedAiScannedAt}</div>
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">AI Scanned At</span>
+              <div className="mt-2 text-green-950">{formattedAiScannedAt}</div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Created At</span>
-              <div className="mt-2 text-slate-100">{formattedCreatedAt}</div>
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Created At</span>
+              <div className="mt-2 text-green-950">{formattedCreatedAt}</div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Confidence Score</span>
-              <div className="mt-2 text-slate-100 font-medium">
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Confidence Score</span>
+              <div className="mt-2 text-green-950 font-medium">
                 {((detection.confidence_score ?? detection.confidence) * 100).toFixed(0)}%
               </div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Risk Score</span>
-              <div className="mt-2 text-slate-100 font-medium">
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Risk Score</span>
+              <div className="mt-2 text-green-950 font-medium">
                 {typeof detection.risk_score === "number" ? detection.risk_score.toFixed(2) : "N/A"}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Detected Illegal Product</span>
-              <div className="mt-2 text-slate-100">{detection.detected_illegal_product || "Unknown"}</div>
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Detected Illegal Product</span>
+              <div className="mt-2 text-green-950">{detection.detected_illegal_product || "Unknown"}</div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Source</span>
-              <div className="mt-2 text-slate-100">{detection.source || "N/A"}</div>
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Source</span>
+              <div className="mt-2 text-green-950">{detection.source || "N/A"}</div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Evidence Summary</span>
-              <div className="mt-2 text-slate-100">{detection.reason_summary || "N/A"}</div>
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Evidence Summary</span>
+              <div className="mt-2 text-green-950">{detection.reason_summary || "N/A"}</div>
             </div>
-            <div className="rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-slate-600/50 p-3 transition-colors duration-200 col-span-2">
-              <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider font-semibold">Reason</span>
-              <div className="mt-2 text-slate-100 leading-relaxed break-words">{detection.reason || "N/A"}</div>
+            <div className="rounded-lg bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 transition-colors duration-200 col-span-2">
+              <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Reason</span>
+              <div className="mt-2 text-green-950 leading-relaxed break-words">{detection.reason || "N/A"}</div>
             </div>
           </div>
         </div>
 
         <div className="hidden space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] uppercase font-mono text-slate-500 tracking-widest">Gemini AI Verification Intel</label>
+            <label className="text-[10px] uppercase font-mono text-green-700 tracking-widest">Gemini AI Verification Intel</label>
           </div>
-          <div className="space-y-2 text-xs text-slate-400 bg-slate-950/80 p-4 rounded-lg border border-slate-800 group">
-            <div className="flex justify-between border-b border-slate-800/50 pb-2">
-              <span className="text-slate-500">Coordinates:</span>
-              <span className="text-slate-300 font-mono">{detection.lat.toFixed(6)}, {detection.lng.toFixed(6)}</span>
+          <div className="space-y-2 text-xs text-green-800 bg-white/80 p-4 rounded-lg border border-lime-300 group">
+            <div className="flex justify-between border-b border-lime-300/50 pb-2">
+              <span className="text-green-700">Coordinates:</span>
+              <span className="text-green-900 font-mono">{detection.lat.toFixed(6)}, {detection.lng.toFixed(6)}</span>
             </div>
-              <div className="flex justify-between border-b border-slate-800/50 pb-2">
-                <span className="text-slate-500">Risk Level:</span>
-                <span className={`font-mono ${localRisk.riskLevel === "High" ? "text-red-400" : localRisk.riskLevel === "Medium" ? "text-amber-400" : "text-emerald-400"}`}>
+              <div className="flex justify-between border-b border-lime-300/50 pb-2">
+                <span className="text-green-700">Risk Level:</span>
+                <span className={`font-mono ${localRisk.riskLevel === "High" ? "text-red-400" : localRisk.riskLevel === "Medium" ? "text-amber-400" : "text-lime-700"}`}>
                   {localRisk.riskLevel}
                 </span>
               </div>
-            <div className="flex flex-col gap-1 border-b border-slate-800/50 pb-2">
+            <div className="flex flex-col gap-1 border-b border-lime-300/50 pb-2">
               <div className="flex justify-between items-start gap-2">
-                <span className="text-slate-500">Evidence Hash:</span>
+                <span className="text-green-700">Evidence Hash:</span>
                 <div className="flex flex-col items-end gap-1">
-                  <span className="text-emerald-400 font-mono break-all text-xs">
+                  <span className="text-lime-700 font-mono break-all text-xs">
                     {isHashing ? "Calculating..." : hash || "N/A"}
                   </span>
                   {hash && (
@@ -2024,8 +2024,8 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                       onClick={() => !isHashUnique && handleDuplicateDetected()}
                       disabled={isHashUnique === null || isHashUnique}
                       className={`text-[10px] font-mono px-2 py-0.5 rounded cursor-pointer transition-all ${
-                        isHashUnique === null ? "bg-slate-800 text-slate-400" :
-                        isHashUnique ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 cursor-default" :
+                        isHashUnique === null ? "bg-lime-200 text-green-800" :
+                        isHashUnique ? "bg-lime-300/40 text-lime-700 border border-lime-400/50 cursor-default" :
                         "bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 hover:border-red-500 active:bg-red-400/20"
                       }`}>
                       {isHashUnique === null ? "Checking..." :
@@ -2035,55 +2035,55 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                   )}
                 </div>
               </div>
-              <div className="text-[10px] text-slate-500">
+              <div className="text-[10px] text-green-700">
                 {hashError || "SHA-256 fingerprint keeps evidence tamper-proof for Malaysian courts."}
               </div>
             </div>
 
             {showDuplicateModal && duplicateCases.length > 0 && (
               <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-                <div className="bg-slate-900 border border-red-500/50 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6 space-y-4">
+                <div className="bg-white border border-red-500/50 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6 space-y-4">
                   <div className="flex items-start justify-between">
                     <div>
                       <h2 className="text-lg font-mono text-red-400 uppercase tracking-wider">⚠ Duplicate Evidence Hash</h2>
-                      <p className="text-xs text-slate-400 mt-1">Hash: {hash?.substring(0, 16)}... (appears in {duplicateCases.length + 1} case{duplicateCases.length > 0 ? 's' : ''})</p>
+                      <p className="text-xs text-green-800 mt-1">Hash: {hash?.substring(0, 16)}... (appears in {duplicateCases.length + 1} case{duplicateCases.length > 0 ? 's' : ''})</p>
                     </div>
                     <button
                       onClick={() => setShowDuplicateModal(false)}
-                      className="text-slate-400 hover:text-slate-200 text-xl font-bold">×</button>
+                      className="text-green-800 hover:text-green-900 text-xl font-bold">×</button>
                   </div>
 
-                  <div className="bg-slate-950/50 border border-slate-800 rounded p-3 space-y-2">
-                    <p className="text-[10px] uppercase text-slate-500 font-mono">📋 Matching Cases with Same Hash:</p>
+                  <div className="bg-white/60 border border-lime-300 rounded p-3 space-y-2">
+                    <p className="text-[10px] uppercase text-green-700 font-mono">📋 Matching Cases with Same Hash:</p>
                     {duplicateCases.map((dup) => (
                       <div key={dup.id} className="text-xs border-l-2 border-red-500/50 pl-3 py-2">
-                        <div className="text-slate-300"><strong>{dup.animal_type}</strong> {dup.case_name && `(${dup.case_name})`}</div>
-                        <div className="text-slate-500 text-[10px]">📍 {dup.location_name}</div>
-                        <div className="text-slate-500 text-[10px]">📅 {new Date(dup.timestamp).toLocaleString()}</div>
+                        <div className="text-green-900"><strong>{dup.animal_type}</strong> {dup.case_name && `(${dup.case_name})`}</div>
+                        <div className="text-green-700 text-[10px]">📍 {dup.location_name}</div>
+                        <div className="text-green-700 text-[10px]">📅 {new Date(dup.timestamp).toLocaleString()}</div>
                       </div>
                     ))}
                   </div>
 
                   <div className="bg-amber-950/30 border border-amber-700/50 rounded p-4 space-y-2">
                     <p className="text-[10px] uppercase text-amber-400 font-mono font-bold">⚠️ Why This Matters:</p>
-                    <p className="text-xs text-slate-300 leading-relaxed">
+                    <p className="text-xs text-green-900 leading-relaxed">
                       Identical evidence hash across multiple cases indicates potential evidence tampering, unauthorized reuse, or fraudulent reporting. This affects prosecution integrity and court admissibility - Malaysian courts require verified chain of custody and evidence authenticity.
                     </p>
                   </div>
 
-                  <div className="space-y-3 bg-slate-950/40 border border-slate-800 rounded p-4">
-                    <p className="text-[10px] uppercase text-emerald-400 font-mono font-bold">🔍 Gemini Analysis - Possible Reasons:</p>
+                  <div className="space-y-3 bg-lime-200/40 border border-lime-300 rounded p-4">
+                    <p className="text-[10px] uppercase text-lime-700 font-mono font-bold">🔍 Gemini Analysis - Possible Reasons:</p>
                     {isAnalyzingDuplicate ? (
-                      <div className="flex items-center gap-2 text-emerald-400 text-xs animate-pulse">
+                      <div className="flex items-center gap-2 text-lime-700 text-xs animate-pulse">
                         <Activity size={14} />
                         <span>AI analyzing investigation context...</span>
                       </div>
                     ) : duplicateReasons.length > 0 ? (
                       <div className="space-y-2">
                         {duplicateReasons.map((reason, idx) => (
-                          <div key={idx} className="bg-slate-900/80 border border-slate-700 rounded p-3">
-                            <p className="text-xs text-emerald-400 font-semibold">→ {reason}</p>
-                            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                          <div key={idx} className="bg-white/80 border border-lime-300 rounded p-3">
+                            <p className="text-xs text-lime-700 font-semibold">→ {reason}</p>
+                            <p className="text-[10px] text-green-800 mt-1 leading-relaxed">
                               {getReasonExplanation(reason)}
                             </p>
                           </div>
@@ -2095,7 +2095,7 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                   <div className="flex justify-end pt-2">
                     <button
                       onClick={() => setShowDuplicateModal(false)}
-                      className="px-4 py-2 rounded border border-slate-700 text-xs font-mono uppercase text-slate-400 hover:bg-slate-800/50 transition-all">
+                      className="px-4 py-2 rounded border border-lime-300 text-xs font-mono uppercase text-green-800 hover:bg-lime-200/50 transition-all">
                       Close & Review
                     </button>
                   </div>
@@ -2103,12 +2103,12 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
               </div>
             )}
             <div className="pt-2">
-              <p className="mb-2 text-slate-500 flex items-center gap-2">
+              <p className="mb-2 text-green-700 flex items-center gap-2">
                 <AlertCircle size={12} className="text-red-500" /> Gemini Risk Assessment:
               </p>
-              <div className="italic text-slate-300 leading-relaxed bg-slate-900/50 p-3 rounded border-l-2 border-emerald-500 min-h-[60px] flex items-center">
+              <div className="italic text-green-900 leading-relaxed bg-white/50 p-3 rounded border-l-2 border-lime-400 min-h-[60px] flex items-center">
                 {isAnalyzing ? (
-                  <div className="flex items-center gap-2 text-emerald-400 animate-pulse font-mono text-[10px]">
+                  <div className="flex items-center gap-2 text-lime-700 animate-pulse font-mono text-[10px]">
                     <Activity size={14} />
                     <span>Processing live satellite and marketplace data via Gemini...</span>
                   </div>
@@ -2121,10 +2121,10 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
         </div>
       </div>
 
-      <div className="p-6 bg-slate-950 border-t border-emerald-500/20">
+      <div className="p-6 bg-lime-200 border-t border-lime-400/40">
         <button 
           onClick={handleGenerateReport}
-          className="w-full flex items-center justify-center gap-2 py-3.5 bg-emerald-500 text-slate-950 rounded-xl font-black text-sm transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:bg-emerald-400 active:scale-[0.98]"
+          className="w-full flex items-center justify-center gap-2 py-3.5 bg-lime-600 text-green-950 rounded-xl font-black text-sm transition-all shadow-[0_0_20px_rgba(132,204,22,0.35)] hover:shadow-[0_0_30px_rgba(132,204,22,0.5)] hover:bg-white0 active:scale-[0.98]"
         >
           <FileText size={18} />
           GENERATE PROSECUTION REPORT
@@ -2138,22 +2138,22 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
           onClick={() => setShowTrustScoreModal(false)}
         >
           <div 
-            className="bg-slate-900 border border-emerald-500/30 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl"
+            className="bg-white border border-lime-400/50 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 bg-slate-900 border-b border-emerald-500/20 p-4 flex justify-between items-center">
+            <div className="sticky top-0 bg-white border-b border-lime-400/40 p-4 flex justify-between items-center">
               <div>
-                <h3 className="text-lg font-bold text-emerald-400 flex items-center gap-2">
+                <h3 className="text-lg font-bold text-lime-700 flex items-center gap-2">
                   <Activity size={20} />
                   Trust Score Analysis
                 </h3>
-                <p className="text-xs text-slate-500 font-mono mt-1">
+                <p className="text-xs text-green-700 font-mono mt-1">
                   {detection.animal_type} • {detection.location_name}
                 </p>
               </div>
               <button
                 onClick={() => setShowTrustScoreModal(false)}
-                className="text-slate-400 hover:text-slate-200 transition-colors"
+                className="text-green-800 hover:text-green-900 transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2163,18 +2163,18 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
 
             <div className="p-6 space-y-6">
               {/* Trust Score Explanation */}
-              <div className="bg-slate-800/50 border border-emerald-500/20 rounded-lg p-4">
-                <h4 className="text-sm font-bold text-slate-200 mb-2 flex items-center gap-2">
-                  <ShieldCheck size={16} className="text-emerald-400" />
+              <div className="bg-lime-200/50 border border-lime-400/40 rounded-lg p-4">
+                <h4 className="text-sm font-bold text-green-900 mb-2 flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-lime-700" />
                   Current Trust Score: {detection.trust_score ?? 0}
                 </h4>
                 {isExplainingTrust ? (
-                  <div className="flex items-center gap-2 text-emerald-400 animate-pulse font-mono text-xs">
+                  <div className="flex items-center gap-2 text-lime-700 animate-pulse font-mono text-xs">
                     <Activity size={14} />
                     <span>Generating AI explanation...</span>
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-300 leading-relaxed">
+                  <p className="text-sm text-green-900 leading-relaxed">
                     {trustScoreExplanation || "Trust Score represents the number of similar reports (same species + location). Higher scores indicate stronger community validation."}
                   </p>
                 )}
@@ -2182,16 +2182,16 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
 
               {/* Matching Cases */}
               <div>
-                <h4 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
+                <h4 className="text-sm font-bold text-green-900 mb-3 flex items-center gap-2">
                   <AlertCircle size={16} className="text-amber-400" />
                   Matching Cases ({getMatchingCases().length})
                 </h4>
                 {getMatchingCases().length === 0 ? (
-                  <div className="bg-slate-800/30 border border-slate-700 rounded-lg p-4 text-center">
-                    <p className="text-sm text-slate-500">
-                      This is the only report for <span className="text-emerald-400 font-semibold">{detection.animal_type}</span> in <span className="text-emerald-400 font-semibold">{detection.location_name}</span>
+                  <div className="bg-lime-200/30 border border-lime-300 rounded-lg p-4 text-center">
+                    <p className="text-sm text-green-700">
+                      This is the only report for <span className="text-lime-700 font-semibold">{detection.animal_type}</span> in <span className="text-lime-700 font-semibold">{detection.location_name}</span>
                     </p>
-                    <p className="text-xs text-slate-600 mt-2">
+                    <p className="text-xs text-green-800 mt-2">
                       Monitor for additional reports to increase trust score
                     </p>
                   </div>
@@ -2200,43 +2200,43 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                     {getMatchingCases().map((matchCase) => (
                       <div 
                         key={matchCase.id}
-                        className="bg-slate-800/30 border border-slate-700 hover:border-emerald-500/30 rounded-lg p-3 transition-colors"
+                        className="bg-lime-200/30 border border-lime-300 hover:border-lime-400/50 rounded-lg p-3 transition-colors"
                       >
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex-1">
-                            <p className="text-xs font-mono text-emerald-400">Case ID: {matchCase.id}</p>
-                            <p className="text-sm font-semibold text-slate-200 mt-1">{matchCase.animal_type}</p>
+                            <p className="text-xs font-mono text-lime-700">Case ID: {matchCase.id}</p>
+                            <p className="text-sm font-semibold text-green-900 mt-1">{matchCase.animal_type}</p>
                           </div>
                           <span className={`text-xs px-2 py-1 rounded border ${
                             matchCase.priority === "High"
                               ? "bg-red-500/20 border-red-500 text-red-300"
                               : matchCase.priority === "Medium"
                               ? "bg-amber-500/20 border-amber-500 text-amber-300"
-                              : "bg-emerald-500/20 border-emerald-500 text-emerald-300"
+                              : "bg-lime-300/40 border-lime-400 text-lime-800"
                           }`}>
                             {matchCase.priority}
                           </span>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
-                            <span className="text-slate-500">Location:</span>
-                            <p className="text-slate-300 font-mono">{matchCase.location_name}</p>
+                            <span className="text-green-700">Location:</span>
+                            <p className="text-green-900 font-mono">{matchCase.location_name}</p>
                           </div>
                           <div>
-                            <span className="text-slate-500">Source:</span>
-                            <p className="text-slate-300 font-mono">{matchCase.source}</p>
+                            <span className="text-green-700">Source:</span>
+                            <p className="text-green-900 font-mono">{matchCase.source}</p>
                           </div>
                           <div>
-                            <span className="text-slate-500">Confidence:</span>
-                            <p className="text-slate-300 font-mono">{(matchCase.confidence * 100).toFixed(0)}%</p>
+                            <span className="text-green-700">Confidence:</span>
+                            <p className="text-green-900 font-mono">{(matchCase.confidence * 100).toFixed(0)}%</p>
                           </div>
                           <div>
-                            <span className="text-slate-500">Detected:</span>
-                            <p className="text-slate-300 font-mono">{new Date(matchCase.timestamp).toLocaleDateString()}</p>
+                            <span className="text-green-700">Detected:</span>
+                            <p className="text-green-900 font-mono">{new Date(matchCase.timestamp).toLocaleDateString()}</p>
                           </div>
                         </div>
                         {matchCase.description && (
-                          <p className="text-xs text-slate-400 mt-2 line-clamp-2">{matchCase.description}</p>
+                          <p className="text-xs text-green-800 mt-2 line-clamp-2">{matchCase.description}</p>
                         )}
                       </div>
                     ))}
@@ -2245,9 +2245,9 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
               </div>
 
               {/* Action Recommendation */}
-              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
-                <h4 className="text-sm font-bold text-emerald-400 mb-2">Recommendation</h4>
-                <p className="text-sm text-slate-300">
+              <div className="bg-lime-200/60 border border-lime-400/50 rounded-lg p-4">
+                <h4 className="text-sm font-bold text-lime-700 mb-2">Recommendation</h4>
+                <p className="text-sm text-green-900">
                   {getMatchingCases().length > 0
                     ? `Multiple reports detected. Cross-reference these ${getMatchingCases().length + 1} cases to identify patterns, verify authenticity, and prioritize enforcement action.`
                     : "Single report detected. Monitor for additional reports in this location. Consider investigating if other signals (high confidence, verified source) support action."
@@ -2266,22 +2266,22 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
           onClick={() => setShowGeoLocationModal(false)}
         >
           <div 
-            className="bg-slate-900 border border-emerald-500/30 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl"
+            className="bg-white border border-lime-400/50 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 bg-slate-900 border-b border-emerald-500/20 p-4 flex justify-between items-center">
+            <div className="sticky top-0 bg-white border-b border-lime-400/40 p-4 flex justify-between items-center">
               <div>
-                <h3 className="text-lg font-bold text-emerald-400 flex items-center gap-2">
+                <h3 className="text-lg font-bold text-lime-700 flex items-center gap-2">
                   <MapPin size={20} />
                   Location Details
                 </h3>
-                <p className="text-xs text-slate-500 font-mono mt-1">
+                <p className="text-xs text-green-700 font-mono mt-1">
                   {detection.animal_type} • {detection.source}
                 </p>
               </div>
               <button
                 onClick={() => setShowGeoLocationModal(false)}
-                className="text-slate-400 hover:text-slate-200 transition-colors"
+                className="text-green-800 hover:text-green-900 transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2291,26 +2291,26 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
 
             <div className="p-6 space-y-6">
               {/* State/Location */}
-              <div className="bg-slate-800/50 border border-emerald-500/20 rounded-lg p-4">
-                <h4 className="text-sm font-bold text-slate-200 mb-2 flex items-center gap-2">
-                  <MapPin size={16} className="text-emerald-400" />
+              <div className="bg-lime-200/50 border border-lime-400/40 rounded-lg p-4">
+                <h4 className="text-sm font-bold text-green-900 mb-2 flex items-center gap-2">
+                  <MapPin size={16} className="text-lime-700" />
                   State/Location
                 </h4>
-                <p className="text-sm text-slate-300 font-mono">{detection.location_name || "Unknown"}</p>
+                <p className="text-sm text-green-900 font-mono">{detection.location_name || "Unknown"}</p>
               </div>
 
               {/* Full Address - only show if available */}
               {fullAddress && (
-                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4">
-                  <h4 className="text-sm font-bold text-emerald-400 mb-2">Full Address</h4>
-                  <p className="text-sm text-slate-300 leading-relaxed break-words">{fullAddress}</p>
+                <div className="bg-lime-200/60 border border-lime-400/50 rounded-lg p-4">
+                  <h4 className="text-sm font-bold text-lime-700 mb-2">Full Address</h4>
+                  <p className="text-sm text-green-900 leading-relaxed break-words">{fullAddress}</p>
                 </div>
               )}
 
               {/* Coordinates */}
-              <div className="bg-slate-800/50 border border-emerald-500/20 rounded-lg p-4">
-                <h4 className="text-sm font-bold text-slate-200 mb-2">Coordinates</h4>
-                <p className="text-sm text-slate-300 font-mono">{detection.lat.toFixed(6)}, {detection.lng.toFixed(6)}</p>
+              <div className="bg-lime-200/50 border border-lime-400/40 rounded-lg p-4">
+                <h4 className="text-sm font-bold text-green-900 mb-2">Coordinates</h4>
+                <p className="text-sm text-green-900 font-mono">{detection.lat.toFixed(6)}, {detection.lng.toFixed(6)}</p>
               </div>
             </div>
           </div>
