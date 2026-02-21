@@ -1,4 +1,14 @@
 
+export interface EvidenceItem {
+  id: string;
+  caseId: string;
+  fileUrl: string;
+  platformSource?: string;
+  aiSummary?: string;
+  hash?: string;
+  uploadedAt?: string;
+}
+
 export interface Detection {
   id: string;
   animal_type: string;
@@ -28,6 +38,7 @@ export interface Detection {
   status?: 'Pending' | 'Investigating' | 'Resolved';
   evidence_hash?: string;
   trust_score?: number;
+  evidence_images?: EvidenceItem[];
 }
 
 export interface MapMarker {

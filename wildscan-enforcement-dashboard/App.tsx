@@ -7,8 +7,8 @@ import CaseDetails from './components/CaseDetails';
 import FiltersBar from './components/FiltersBar';
 import StatusStrip from './components/StatusStrip';
 import LoginPage from './components/LoginPage';
-import { Detection } from './types';
-import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, serverTimestamp, updateDoc, writeBatch, deleteField, where, getDocs } from "firebase/firestore";
+import { Detection, EvidenceItem } from './types';
+import { collection, onSnapshot, query, orderBy, doc, setDoc, deleteDoc, serverTimestamp, updateDoc, writeBatch, deleteField } from "firebase/firestore";
 import { db } from "./firebase";
 
 const AUTH_STORAGE_KEY = "wildscan_dashboard_auth";
@@ -39,7 +39,7 @@ const App: React.FC = () => {
   const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
   const [firestoreStatus, setFirestoreStatus] = useState<"connecting" | "connected" | "error" | "offline">("connecting");
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
-  const [evidenceByCase, setEvidenceByCase] = useState<Record<string, { fileUrl: string; platformSource?: string; aiSummary?: string; hash?: string }>>({});
+  const [evidenceByCase, setEvidenceByCase] = useState<Record<string, EvidenceItem[]>>({});
   const [caseStatusById, setCaseStatusById] = useState<Record<string, Detection["status"]>>({});
   const [readStateByCase, setReadStateByCase] = useState<Record<string, boolean>>({});
   const [resolvedLocationsById, setResolvedLocationsById] = useState<Record<string, string>>({});
@@ -163,7 +163,7 @@ const App: React.FC = () => {
     return counts;
   }, [caseDocs]);
 
-  const toDetection = (doc: { id: string; data: any }, evidence?: { fileUrl: string; platformSource?: string; aiSummary?: string; hash?: string }): Detection => {
+  const toDetection = (doc: { id: string; data: any }, evidenceItems: EvidenceItem[] = []): Detection => {
     const data = doc.data ?? {};
     const location = data.location ?? {};
     const createdAtRaw = data.createdAt ?? data.createAt ?? data.created_at ?? data.timestamp ?? data.detectedAt ?? data.updatedAt;
@@ -214,13 +214,15 @@ const App: React.FC = () => {
       ?? toNumber(data.lng_value)
       ?? DEFAULT_MAP_CENTER.lng;
 
+    const primaryEvidence = evidenceItems[0];
+
     return {
       id: doc.id,
       animal_type: data.detectedSpecies || data.detected_species || data.speciesDetected || data.species_detected || data.detectedSpeciesName || data.detected_species_name || data.animal_type || data.caseName || data.case_name || "",
       case_name: data.caseName || data.case_name || "",
-      source: data.source || data.platformSource || data.platform_source || evidence?.platformSource || "",
-      platform_source: data.platformSource || data.platform_source || evidence?.platformSource || data.source || "",
-      image_url: evidence?.fileUrl || data.image_url || data.imageUrl || "",
+      source: data.source || data.platformSource || data.platform_source || primaryEvidence?.platformSource || "",
+      platform_source: data.platformSource || data.platform_source || primaryEvidence?.platformSource || data.source || "",
+      image_url: primaryEvidence?.fileUrl || data.image_url || data.imageUrl || "",
       lat,
       lng,
       timestamp: createdAt,
@@ -238,10 +240,11 @@ const App: React.FC = () => {
       risk_score: typeof data.riskScore === "number" ? data.riskScore : typeof data.risk_score === "number" ? data.risk_score : undefined,
       user_handle: data.user_handle,
       post_url: data.post_url,
-      description: data.description || data.summary || data.reasonSummary || data.reason_summary || evidence?.aiSummary || data.status || "",
+      description: data.description || data.summary || data.reasonSummary || data.reason_summary || primaryEvidence?.aiSummary || data.status || "",
       status,
-      evidence_hash: evidence?.hash || "",
+      evidence_hash: primaryEvidence?.hash || "",
       trust_score: trustScore,
+      evidence_images: evidenceItems,
     };
   };
 
@@ -330,29 +333,41 @@ const App: React.FC = () => {
         return;
       }
 
-      const nextMap: Record<string, { fileUrl: string; uploadedAt?: string; platformSource?: string; aiSummary?: string; hash?: string }> = {};
-      snapshot.docs.forEach((doc: any) => {
-        const data = doc.data();
+      const nextMap: Record<string, EvidenceItem[]> = {};
+      snapshot.docs.forEach((docSnap: any) => {
+        const data = docSnap.data();
         const caseId = data.caseId as string | undefined;
         const fileUrl = data.fileUrl as string | undefined;
         const platformSource = data.platformSource as string | undefined;
         const aiSummary = data.aiSummary as string | undefined;
-        const Hash = data.hash;
+        const hash = data.hash as string | undefined;
         if (!caseId || !fileUrl) return;
+
         let uploadedAt = data.uploadedAt;
         if (uploadedAt && typeof uploadedAt.toDate === "function") {
           uploadedAt = uploadedAt.toDate().toISOString();
         }
 
+        const item: EvidenceItem = {
+          id: docSnap.id,
+          caseId,
+          fileUrl,
+          platformSource,
+          aiSummary,
+          hash,
+          uploadedAt,
+        };
+
         if (!nextMap[caseId]) {
-          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary, hash: Hash };
+          nextMap[caseId] = [item];
           return;
         }
 
-        const current = nextMap[caseId];
-        if (!current.uploadedAt || (uploadedAt && uploadedAt > current.uploadedAt)) {
-          nextMap[caseId] = { fileUrl, uploadedAt, platformSource, aiSummary, hash: Hash };
-        }
+        nextMap[caseId].push(item);
+      });
+
+      Object.values(nextMap).forEach((items) => {
+        items.sort((a, b) => (b.uploadedAt || "").localeCompare(a.uploadedAt || ""));
       });
 
       setEvidenceByCase(nextMap);
@@ -462,38 +477,17 @@ const App: React.FC = () => {
     return Array.from(new Set(detections.map((d) => d.location_name).filter((loc) => loc && loc.trim()))).sort();
   }, [detections]);
 
-  // Track hash uniqueness and cases without hashes
-  const hashValidation = useMemo(() => {
-    const hashes = new Map<string, string[]>(); // hash -> caseIds
-    const casesWithoutHash: string[] = [];
-    const duplicateHashes: string[] = [];
-
-    detections.forEach((d) => {
-      if (d.evidence_hash) {
-        const caseIds = hashes.get(d.evidence_hash) || [];
-        caseIds.push(d.id);
-        hashes.set(d.evidence_hash, caseIds);
-      } else {
-        casesWithoutHash.push(d.id);
-      }
+  const missingEvidenceItems = useMemo(() => {
+    const items: EvidenceItem[] = [];
+    Object.values(evidenceByCase).forEach((caseItems) => {
+      caseItems.forEach((item) => {
+        if (!item.hash && item.fileUrl) {
+          items.push(item);
+        }
+      });
     });
-
-    hashes.forEach((caseIds, hash) => {
-      if (caseIds.length > 1) {
-        // Duplicate hash detected - same evidence used for multiple cases
-        duplicateHashes.push(...caseIds);
-      }
-    });
-
-    return {
-      uniqueHashCount: hashes.size,
-      totalCasesWithHash: detections.filter((d) => d.evidence_hash).length,
-      casesWithoutHash,
-      duplicateHashes,
-      allHashesUnique: duplicateHashes.length === 0,
-      allCasesHaveHash: casesWithoutHash.length === 0,
-    };
-  }, [detections]);
+    return items;
+  }, [evidenceByCase]);
 
   // Filter detections based on search query and filters
   const filteredDetections = useMemo(() => {
@@ -548,18 +542,18 @@ const App: React.FC = () => {
     );
   }, [detections, minConfidence, searchQuery, severityFilter, sourceFilter, locationFilter]);
 
-  // Auto-calculate hashes for cases that don't have them
+  // Auto-calculate hashes for evidence images that don't have them
   useEffect(() => {
-    if (hashValidation.casesWithoutHash.length === 0) return;
+    if (missingEvidenceItems.length === 0) return;
     if (!db) return;
+    if (!window.crypto?.subtle) return;
 
     const calculateMissingHashes = async () => {
-      for (const caseId of hashValidation.casesWithoutHash) {
-        const detection = detections.find((d) => d.id === caseId);
-        if (!detection?.image_url) continue;
+      for (const item of missingEvidenceItems) {
+        if (!item.fileUrl) continue;
 
         try {
-          const response = await fetch(detection.image_url, { mode: "cors" });
+          const response = await fetch(item.fileUrl, { mode: "cors" });
           if (!response.ok) continue;
 
           const buffer = await response.arrayBuffer();
@@ -567,28 +561,20 @@ const App: React.FC = () => {
           const hashArray = Array.from(new Uint8Array(hashBuffer));
           const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
-          // Save hash to evidence collection
-          const evidenceRef = collection(db, "evidence");
-          const q = query(evidenceRef, where("caseId", "==", caseId));
-          const querySnapshot = await getDocs(q);
-
-          if (!querySnapshot.empty) {
-            const evidenceDoc = querySnapshot.docs[0];
-            await updateDoc(evidenceDoc.ref, {
-              hash: hashHex,
-              hashCalculatedAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            });
-            console.log(`✓ Hash calculated and saved for case ${caseId}`);
-          }
+          await updateDoc(doc(db, "evidence", item.id), {
+            hash: hashHex,
+            hashCalculatedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          console.log(`✓ Hash calculated and saved for case ${item.caseId}`);
         } catch (err) {
-          console.warn(`Failed to calculate hash for case ${caseId}:`, err);
+          console.warn(`Failed to calculate hash for case ${item.caseId}:`, err);
         }
       }
     };
 
     calculateMissingHashes();
-  }, [hashValidation.casesWithoutHash, detections, db]);
+  }, [missingEvidenceItems, db]);
 
   const stats = useMemo(() => {
     const total = filteredDetections.length;

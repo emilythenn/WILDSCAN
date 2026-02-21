@@ -1,12 +1,12 @@
 
-import React, { useState, useEffect } from 'react';
-import { Detection } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Detection, EvidenceItem } from '../types';
 import { Clock, MapPin, Share2, FileText, ShieldCheck, Download, Link as LinkIcon, AlertCircle, Activity, X, Volume2, VolumeX } from 'lucide-react';
 import { speakText, stopSpeaking, isSpeechSynthesisSupported, isSpeaking } from '../utils/speechUtils';
 import { GoogleGenAI } from "@google/genai";
 import { jsPDF } from "jspdf";
 import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, UnderlineType, convertInchesToTwip, ImageRun, Table, TableCell, TableRow, WidthType, BorderStyle, Packer } from "docx";
-import { collection, query, where, getDocs, updateDoc, doc, serverTimestamp, getDoc } from "firebase/firestore";
+import { updateDoc, doc, serverTimestamp, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 interface CaseDetailsProps {
@@ -27,6 +27,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
   const [hashError, setHashError] = useState<string | null>(null);
   const [isHashing, setIsHashing] = useState(false);
   const [isHashUnique, setIsHashUnique] = useState<boolean | null>(null);
+  const [evidenceHashState, setEvidenceHashState] = useState<Record<string, { hash?: string; error?: string; isHashing: boolean }>>({});
   const [showTrustScoreModal, setShowTrustScoreModal] = useState(false);
   const [trustScoreExplanation, setTrustScoreExplanation] = useState<string | null>(null);
   const [isExplainingTrust, setIsExplainingTrust] = useState(false);
@@ -34,6 +35,17 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
   const [duplicateCases, setDuplicateCases] = useState<Detection[]>([]);
   const [duplicateReasons, setDuplicateReasons] = useState<string[]>([]);
   const [isAnalyzingDuplicate, setIsAnalyzingDuplicate] = useState(false);
+  const [activeDuplicateHash, setActiveDuplicateHash] = useState<string | null>(null);
+  const [duplicateAddressById, setDuplicateAddressById] = useState<Record<string, string>>({});
+  const [duplicateEvidenceItems, setDuplicateEvidenceItems] = useState<Array<{
+    caseId: string;
+    caseName?: string;
+    animalType: string;
+    locationName: string;
+    timestamp: Detection["timestamp"];
+    imageUrl?: string;
+    hash: string;
+  }>>([]);
   const [localStatus, setLocalStatus] = useState<Detection["status"] | undefined>(detection?.status);
   const [fullAddress, setFullAddress] = useState<string | null>(null);
   const [showGeoLocationModal, setShowGeoLocationModal] = useState(false);
@@ -50,6 +62,65 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
     }
     const parsed = new Date(timestamp as string);
     return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : "N/A";
+  };
+
+  const formatEvidenceTimestamp = (value?: string) => {
+    if (!value) return "N/A";
+    const parsed = new Date(value);
+    return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : "N/A";
+  };
+
+  const evidenceItems = useMemo<EvidenceItem[]>(() => {
+    if (!detection) return [];
+    if (detection.evidence_images && detection.evidence_images.length > 0) {
+      return detection.evidence_images;
+    }
+    if (detection.image_url) {
+      return [
+        {
+          id: `fallback-${detection.id}`,
+          caseId: detection.id,
+          fileUrl: detection.image_url,
+          platformSource: detection.platform_source || detection.source,
+          aiSummary: detection.reason_summary || detection.description,
+        },
+      ];
+    }
+    return [];
+  }, [detection]);
+
+  const primaryEvidence = evidenceItems[0];
+
+  const evidenceHashIndex = useMemo(() => {
+    const index = new Map<string, Set<string>>();
+
+    (allDetections || []).forEach((item) => {
+      const entries = item.evidence_images && item.evidence_images.length > 0
+        ? item.evidence_images
+        : item.evidence_hash
+          ? [{ id: item.id, caseId: item.id, fileUrl: item.image_url, hash: item.evidence_hash } as EvidenceItem]
+          : [];
+
+      entries.forEach((evidence) => {
+        if (!evidence.hash) return;
+        const set = index.get(evidence.hash) || new Set<string>();
+        set.add(item.id);
+        index.set(evidence.hash, set);
+      });
+    });
+
+    return index;
+  }, [allDetections]);
+
+  const getEvidenceHash = (item: EvidenceItem) => {
+    return evidenceHashState[item.id]?.hash || item.hash || null;
+  };
+
+  const getDuplicateCount = (hashValue: string | null) => {
+    if (!hashValue || !detection) return 0;
+    const caseIds = evidenceHashIndex.get(hashValue);
+    if (!caseIds) return 0;
+    return caseIds.size - (caseIds.has(detection.id) ? 1 : 0);
   };
 
   // Generate text for read-aloud functionality
@@ -263,19 +334,80 @@ Focus on: Why multiple reports in the same location increase credibility, and wh
     return await getResponseText(data);
   };
 
-  const handleDuplicateDetected = async () => {
-    if (!hash || !detection) return;
+  const handleDuplicateDetected = async (targetHash?: string) => {
+    const hashToCheck = targetHash || hash;
+    if (!hashToCheck || !detection) return;
 
-    // Find all cases with the same hash
+    const caseIds = evidenceHashIndex.get(hashToCheck) || new Set<string>();
     const duplicates = (allDetections || []).filter(
-      (d) => d.evidence_hash === hash && d.id !== detection.id
+      (d) => d.id !== detection.id && caseIds.has(d.id)
     );
 
+    const matchingEvidence: Array<{
+      caseId: string;
+      caseName?: string;
+      animalType: string;
+      locationName: string;
+      timestamp: Detection["timestamp"];
+      imageUrl?: string;
+      hash: string;
+    }> = [];
+
+    (allDetections || []).forEach((item) => {
+      const entries = item.evidence_images && item.evidence_images.length > 0
+        ? item.evidence_images
+        : item.evidence_hash
+          ? [{ id: item.id, caseId: item.id, fileUrl: item.image_url, hash: item.evidence_hash } as EvidenceItem]
+          : [];
+
+      entries.forEach((evidence) => {
+        if (evidence.hash !== hashToCheck) return;
+        matchingEvidence.push({
+          caseId: item.id,
+          caseName: item.case_name,
+          animalType: item.animal_type,
+          locationName: item.location_name,
+          timestamp: item.timestamp,
+          imageUrl: evidence.fileUrl || item.image_url,
+          hash: hashToCheck,
+        });
+      });
+    });
+
+    setActiveDuplicateHash(hashToCheck);
     setDuplicateCases(duplicates);
     setDuplicateReasons([]);
+    setDuplicateEvidenceItems(matchingEvidence);
     setShowDuplicateModal(true);
 
-    // Analyze reasons using Gemini
+    const uniqueCaseIds = Array.from(new Set(matchingEvidence.map((item) => item.caseId)));
+    if (detection.id && fullAddress) {
+      setDuplicateAddressById((prev) => ({ ...prev, [detection.id]: fullAddress }));
+    }
+
+    if (db && uniqueCaseIds.length > 0) {
+      const missingCaseIds = uniqueCaseIds.filter((caseId) => !duplicateAddressById[caseId]);
+      if (missingCaseIds.length > 0) {
+        const fetched = await Promise.all(
+          missingCaseIds.map(async (caseId) => ({
+            caseId,
+            address: await fetchCaseAddress(caseId),
+          }))
+        );
+
+        const nextMap: Record<string, string> = {};
+        fetched.forEach((entry) => {
+          if (entry.address) {
+            nextMap[entry.caseId] = entry.address;
+          }
+        });
+
+        if (Object.keys(nextMap).length > 0) {
+          setDuplicateAddressById((prev) => ({ ...prev, ...nextMap }));
+        }
+      }
+    }
+
     await analyzeDuplicateReasons(duplicates);
   };
 
@@ -351,6 +483,26 @@ Example format: ["Reason 1", "Reason 2", "Reason 3"]`;
     return explanations[reason] || reason;
   };
 
+  const fetchCaseAddress = async (caseId: string) => {
+    if (!db) return null;
+    try {
+      let docRef = doc(db, "cases", caseId);
+      let docSnap = await getDoc(docRef);
+
+      if (!docSnap.exists()) {
+        docRef = doc(db, "detections", caseId);
+        docSnap = await getDoc(docRef);
+      }
+
+      if (!docSnap.exists()) return null;
+      const data = docSnap.data();
+      return data?.location?.fullAddress || data?.fullAddress || null;
+    } catch (error) {
+      console.error("Failed to fetch duplicate case address:", error);
+      return null;
+    }
+  };
+
   useEffect(() => {
     if (!detection) return;
     let cancelled = false;
@@ -419,18 +571,38 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
   useEffect(() => {
     let cancelled = false;
 
-    const buildHash = async () => {
+    const computeHash = async (url: string) => {
+      const response = await fetch(url, { mode: "cors" });
+      if (!response.ok) {
+        throw new Error("Unable to fetch evidence image.");
+      }
+      const buffer = await response.arrayBuffer();
+      const hashBuffer = await window.crypto.subtle.digest("SHA-256", buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    };
+
+    const updateEvidenceHash = async (evidenceId: string, hashHex: string) => {
+      if (!db) return;
+      if (evidenceId.startsWith("fallback-")) return;
+      try {
+        await updateDoc(doc(db, "evidence", evidenceId), {
+          hash: hashHex,
+          hashCalculatedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (firestoreError) {
+        console.error("Failed to save evidence hash to Firestore:", firestoreError);
+      }
+    };
+
+    const buildHashes = async () => {
       setHash(null);
       setHashError(null);
 
-      if (detection?.evidence_hash) {
-        setHash(detection.evidence_hash);
+      if (evidenceItems.length === 0) {
         setIsHashing(false);
-        return;
-      }
-
-      if (!detection?.image_url) {
-        setIsHashing(false);
+        setEvidenceHashState({});
         return;
       }
 
@@ -440,60 +612,71 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
         return;
       }
 
-      setIsHashing(true);
-      try {
-        const response = await fetch(detection.image_url, { mode: "cors" });
-        if (!response.ok) {
-          throw new Error("Unable to fetch evidence image.");
+      const initialState: Record<string, { hash?: string; error?: string; isHashing: boolean }> = {};
+      evidenceItems.forEach((item) => {
+        if (item.hash) {
+          initialState[item.id] = { hash: item.hash, error: undefined, isHashing: false };
+        } else if (!item.fileUrl) {
+          initialState[item.id] = { hash: undefined, error: "Evidence image unavailable.", isHashing: false };
+        } else {
+          initialState[item.id] = { hash: undefined, error: undefined, isHashing: true };
         }
-        const buffer = await response.arrayBuffer();
-        const hashBuffer = await window.crypto.subtle.digest("SHA-256", buffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-        if (!cancelled) {
-          setHash(hashHex);
-          
-          // Save hash to Firestore evidence collection only
-          if (db && detection.id && hashHex) {
-            try {
-              const evidenceRef = collection(db, "evidence");
-              const q = query(evidenceRef, where("caseId", "==", detection.id));
-              const querySnapshot = await getDocs(q);
-              
-              if (!querySnapshot.empty) {
-                // Update first matching evidence document with field name "hash"
-                const evidenceDoc = querySnapshot.docs[0];
-                await updateDoc(evidenceDoc.ref, {
-                  hash: hashHex,
-                  hashCalculatedAt: serverTimestamp(),
-                  updatedAt: serverTimestamp()
-                });
-                console.log(`Evidence hash saved to evidence collection for case ${detection.id}`);
-              } else {
-                console.warn(`No evidence document found for case ${detection.id}`);
-              }
-            } catch (firestoreError) {
-              console.error("Failed to save evidence hash to Firestore:", firestoreError);
+      });
+      setEvidenceHashState(initialState);
+
+      if (primaryEvidence?.hash) {
+        setHash(primaryEvidence.hash);
+        setIsHashing(false);
+      } else if (primaryEvidence?.fileUrl) {
+        setIsHashing(true);
+      } else {
+        setIsHashing(false);
+      }
+
+      for (const item of evidenceItems) {
+        if (cancelled) return;
+        if (item.hash || !item.fileUrl) {
+          if (item.id === primaryEvidence?.id && item.hash) {
+            setHash(item.hash);
+            setIsHashing(false);
+          }
+          continue;
+        }
+
+        try {
+          const hashHex = await computeHash(item.fileUrl);
+          if (cancelled) return;
+          setEvidenceHashState((prev) => ({
+            ...prev,
+            [item.id]: { hash: hashHex, error: undefined, isHashing: false },
+          }));
+          if (item.id === primaryEvidence?.id) {
+            setHash(hashHex);
+            setHashError(null);
+            setIsHashing(false);
+          }
+          await updateEvidenceHash(item.id, hashHex);
+        } catch (err) {
+          if (!cancelled) {
+            setEvidenceHashState((prev) => ({
+              ...prev,
+              [item.id]: { hash: undefined, error: "Hash unavailable for this evidence.", isHashing: false },
+            }));
+            if (item.id === primaryEvidence?.id) {
+              setHashError("Hash unavailable for this evidence.");
+              setIsHashing(false);
             }
           }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setHashError("Hash unavailable for this evidence.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsHashing(false);
         }
       }
     };
 
-    buildHash();
+    buildHashes();
 
     return () => {
       cancelled = true;
     };
-  }, [detection?.image_url]);
+  }, [evidenceItems, primaryEvidence?.id, db]);
 
   useEffect(() => {
     if (!isGenerating) {
@@ -506,20 +689,17 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
     setReportContent(null);
   }, [detection?.id]);
 
-  // Check if hash is unique among all detections
+  // Check if primary hash is unique among all detections
   useEffect(() => {
     if (!hash || !detection) {
       setIsHashUnique(null);
       return;
     }
 
-    // Count how many detections have this same hash
-    const duplicateCount = (allDetections || []).filter(
-      (d) => d.evidence_hash === hash && d.id !== detection.id
-    ).length;
-
+    const caseIds = evidenceHashIndex.get(hash);
+    const duplicateCount = caseIds ? caseIds.size - (caseIds.has(detection.id) ? 1 : 0) : 0;
     setIsHashUnique(duplicateCount === 0);
-  }, [hash, detection, allDetections]);
+  }, [hash, detection, evidenceHashIndex]);
 
   // Fetch fullAddress from Firebase
   useEffect(() => {
@@ -1783,6 +1963,108 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {showDuplicateModal && duplicateCases.length > 0 && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-white border border-red-500/50 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6 space-y-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-lg font-mono text-red-400 uppercase tracking-wider">⚠ Duplicate Evidence Hash</h2>
+                  <p className="text-xs text-green-800 mt-1">Hash: {activeDuplicateHash?.substring(0, 16)}... (appears in {duplicateCases.length + 1} case{duplicateCases.length > 0 ? 's' : ''})</p>
+                </div>
+                <button
+                  onClick={() => setShowDuplicateModal(false)}
+                  className="text-green-800 hover:text-green-900 text-xl font-bold">×</button>
+              </div>
+
+              <div className="bg-white/60 border border-lime-300 rounded p-3 space-y-2">
+                <p className="text-[10px] uppercase text-green-700 font-mono">📋 Matching Cases with Same Hash:</p>
+                {duplicateCases.map((dup) => (
+                  <div key={dup.id} className="text-xs border-l-2 border-red-500/50 pl-3 py-2">
+                    <div className="text-green-900"><strong>{dup.animal_type}</strong> {dup.case_name && `(${dup.case_name})`}</div>
+                    <div className="text-green-700 text-[10px]">Case Name: {dup.case_name || "N/A"}</div>
+                    <div className="text-green-700 text-[10px]">State: {dup.location_name || "N/A"}</div>
+                    <div className="text-green-700 text-[10px]">Address: {duplicateAddressById[dup.id] || "N/A"}</div>
+                    <div className="text-green-700 text-[10px]">📅 {new Date(dup.timestamp).toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-white/60 border border-lime-300 rounded p-3 space-y-2">
+                <p className="text-[10px] uppercase text-green-700 font-mono">🖼️ Matching Evidence Images:</p>
+                {duplicateEvidenceItems.length > 0 ? (
+                  <div className="space-y-3">
+                    {duplicateEvidenceItems.map((item, idx) => (
+                      <div key={`${item.caseId}-${idx}`} className="flex gap-3 border border-lime-300/50 rounded-lg p-3 bg-white/80">
+                        <div className="w-20 h-16 rounded-md overflow-hidden border border-lime-300/50 bg-lime-100">
+                          {item.imageUrl ? (
+                            <img
+                              src={item.imageUrl}
+                              alt={`Evidence for case ${item.caseId}`}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[9px] text-green-700 font-mono">
+                              No image
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-xs text-green-800 space-y-1">
+                          <div className="text-green-900 font-semibold">
+                            {item.animalType} {item.caseName ? `(${item.caseName})` : ""}
+                          </div>
+                          <div className="text-[10px]">Case ID: {item.caseId}</div>
+                          <div className="text-[10px]">Case Name: {item.caseName || "N/A"}</div>
+                          <div className="text-[10px]">State: {item.locationName || "N/A"}</div>
+                          <div className="text-[10px]">Address: {duplicateAddressById[item.caseId] || "N/A"}</div>
+                          <div className="text-[10px]">Detected: {new Date(item.timestamp).toLocaleString()}</div>
+                          <div className="text-[10px]">Hash: {item.hash.slice(0, 16)}...</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-green-700">No matching evidence images found.</div>
+                )}
+              </div>
+
+              <div className="bg-amber-950/30 border border-amber-700/50 rounded p-4 space-y-2">
+                <p className="text-[10px] uppercase text-amber-400 font-mono font-bold">⚠️ Why This Matters:</p>
+                <p className="text-xs text-green-900 leading-relaxed">
+                  Identical evidence hash across multiple cases indicates potential evidence tampering, unauthorized reuse, or fraudulent reporting. This affects prosecution integrity and court admissibility - Malaysian courts require verified chain of custody and evidence authenticity.
+                </p>
+              </div>
+
+              <div className="space-y-3 bg-lime-200/40 border border-lime-300 rounded p-4">
+                <p className="text-[10px] uppercase text-lime-700 font-mono font-bold">🔍 Gemini Analysis - Possible Reasons:</p>
+                {isAnalyzingDuplicate ? (
+                  <div className="flex items-center gap-2 text-lime-700 text-xs animate-pulse">
+                    <Activity size={14} />
+                    <span>AI analyzing investigation context...</span>
+                  </div>
+                ) : duplicateReasons.length > 0 ? (
+                  <div className="space-y-2">
+                    {duplicateReasons.map((reason, idx) => (
+                      <div key={idx} className="bg-white/80 border border-lime-300 rounded p-3">
+                        <p className="text-xs text-lime-700 font-semibold">→ {reason}</p>
+                        <p className="text-[10px] text-green-800 mt-1 leading-relaxed">
+                          {getReasonExplanation(reason)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={() => setShowDuplicateModal(false)}
+                  className="px-4 py-2 rounded border border-lime-300 text-xs font-mono uppercase text-green-800 hover:bg-lime-200/50 transition-all">
+                  Close & Review
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-[10px] uppercase font-mono text-green-700 tracking-widest">Visual Evidence</label>
@@ -1832,6 +2114,82 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
             </div>
           </div>
         </div>
+
+        {evidenceItems.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] uppercase font-mono text-green-700 tracking-widest">Evidence Images</label>
+              <span className="text-[10px] text-green-700 font-mono">
+                {evidenceItems.length} item{evidenceItems.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {evidenceItems.map((item, index) => {
+                const hashValue = getEvidenceHash(item);
+                const hashState = evidenceHashState[item.id];
+                const duplicateCount = getDuplicateCount(hashValue);
+                const hasDuplicate = duplicateCount > 0;
+
+                return (
+                  <div key={item.id} className="bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 rounded-lg transition-colors duration-200">
+                    <div className="flex gap-3">
+                      <div className="w-28 h-20 rounded-md overflow-hidden border border-lime-300/50 bg-lime-100">
+                        {item.fileUrl ? (
+                          <img
+                            src={item.fileUrl}
+                            alt={`Evidence ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[9px] text-green-700 font-mono">
+                            No image
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] text-green-800 font-mono uppercase tracking-wider font-semibold">Evidence {index + 1}</span>
+                          <span className={`text-[9px] font-mono uppercase tracking-wider ${hasDuplicate ? "text-red-500" : "text-lime-700"}`}>
+                            {hasDuplicate ? `⚠ Duplicate (${duplicateCount})` : "✓ Unique"}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-green-800">
+                          Platform: {item.platformSource || detection.platform_source || detection.source || "N/A"}
+                        </div>
+                        <div className="text-[10px] text-green-800">
+                          Captured: {formatEvidenceTimestamp(item.uploadedAt)}
+                        </div>
+                        <div className="text-[10px] text-green-800">
+                          AI Confidence: {(detection.confidence * 100).toFixed(1)}%
+                        </div>
+                        {item.aiSummary && (
+                          <div className="text-[10px] text-green-800 leading-relaxed">
+                            AI Summary: {item.aiSummary}
+                          </div>
+                        )}
+                        <div className="text-[10px] text-green-800">
+                          SHA-256: {hashState?.isHashing ? "Calculating..." : hashValue ? `${hashValue.slice(0, 16)}...` : "N/A"}
+                        </div>
+                        {hashState?.error && (
+                          <div className="text-[10px] text-red-500">{hashState.error}</div>
+                        )}
+                        {hasDuplicate && hashValue && (
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateDetected(hashValue)}
+                            className="inline-flex items-center px-2 py-1 rounded-full text-[9px] font-mono uppercase tracking-wider bg-red-500/10 text-red-600 border border-red-500/40 hover:bg-red-500/20 hover:text-red-700 transition-colors"
+                          >
+                            View duplicates
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 rounded-lg transition-colors duration-200">
@@ -2040,68 +2398,6 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
               </div>
             </div>
 
-            {showDuplicateModal && duplicateCases.length > 0 && (
-              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-                <div className="bg-white border border-red-500/50 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6 space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h2 className="text-lg font-mono text-red-400 uppercase tracking-wider">⚠ Duplicate Evidence Hash</h2>
-                      <p className="text-xs text-green-800 mt-1">Hash: {hash?.substring(0, 16)}... (appears in {duplicateCases.length + 1} case{duplicateCases.length > 0 ? 's' : ''})</p>
-                    </div>
-                    <button
-                      onClick={() => setShowDuplicateModal(false)}
-                      className="text-green-800 hover:text-green-900 text-xl font-bold">×</button>
-                  </div>
-
-                  <div className="bg-white/60 border border-lime-300 rounded p-3 space-y-2">
-                    <p className="text-[10px] uppercase text-green-700 font-mono">📋 Matching Cases with Same Hash:</p>
-                    {duplicateCases.map((dup) => (
-                      <div key={dup.id} className="text-xs border-l-2 border-red-500/50 pl-3 py-2">
-                        <div className="text-green-900"><strong>{dup.animal_type}</strong> {dup.case_name && `(${dup.case_name})`}</div>
-                        <div className="text-green-700 text-[10px]">📍 {dup.location_name}</div>
-                        <div className="text-green-700 text-[10px]">📅 {new Date(dup.timestamp).toLocaleString()}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="bg-amber-950/30 border border-amber-700/50 rounded p-4 space-y-2">
-                    <p className="text-[10px] uppercase text-amber-400 font-mono font-bold">⚠️ Why This Matters:</p>
-                    <p className="text-xs text-green-900 leading-relaxed">
-                      Identical evidence hash across multiple cases indicates potential evidence tampering, unauthorized reuse, or fraudulent reporting. This affects prosecution integrity and court admissibility - Malaysian courts require verified chain of custody and evidence authenticity.
-                    </p>
-                  </div>
-
-                  <div className="space-y-3 bg-lime-200/40 border border-lime-300 rounded p-4">
-                    <p className="text-[10px] uppercase text-lime-700 font-mono font-bold">🔍 Gemini Analysis - Possible Reasons:</p>
-                    {isAnalyzingDuplicate ? (
-                      <div className="flex items-center gap-2 text-lime-700 text-xs animate-pulse">
-                        <Activity size={14} />
-                        <span>AI analyzing investigation context...</span>
-                      </div>
-                    ) : duplicateReasons.length > 0 ? (
-                      <div className="space-y-2">
-                        {duplicateReasons.map((reason, idx) => (
-                          <div key={idx} className="bg-white/80 border border-lime-300 rounded p-3">
-                            <p className="text-xs text-lime-700 font-semibold">→ {reason}</p>
-                            <p className="text-[10px] text-green-800 mt-1 leading-relaxed">
-                              {getReasonExplanation(reason)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="flex justify-end pt-2">
-                    <button
-                      onClick={() => setShowDuplicateModal(false)}
-                      className="px-4 py-2 rounded border border-lime-300 text-xs font-mono uppercase text-green-800 hover:bg-lime-200/50 transition-all">
-                      Close & Review
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
             <div className="pt-2">
               <p className="mb-2 text-green-700 flex items-center gap-2">
                 <AlertCircle size={12} className="text-red-500" /> Gemini Risk Assessment:
