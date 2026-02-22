@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Detection, EvidenceItem } from '../types';
-import { Clock, MapPin, Share2, FileText, ShieldCheck, Download, Link as LinkIcon, AlertCircle, Activity, X, Volume2, VolumeX } from 'lucide-react';
+import { Clock, MapPin, Share2, FileText, ShieldCheck, Download, Link as LinkIcon, AlertCircle, Activity, X, Volume2, VolumeX, Sparkles } from 'lucide-react';
 import { speakText, stopSpeaking, isSpeechSynthesisSupported, isSpeaking } from '../utils/speechUtils';
 import { GoogleGenAI } from "@google/genai";
 import { jsPDF } from "jspdf";
@@ -31,6 +31,8 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
   const [showTrustScoreModal, setShowTrustScoreModal] = useState(false);
   const [trustScoreExplanation, setTrustScoreExplanation] = useState<string | null>(null);
   const [isExplainingTrust, setIsExplainingTrust] = useState(false);
+  const [trustScoreRecommendations, setTrustScoreRecommendations] = useState<string | null>(null);
+  const [isAnalyzingTrustScore, setIsAnalyzingTrustScore] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicateCases, setDuplicateCases] = useState<Detection[]>([]);
   const [duplicateReasons, setDuplicateReasons] = useState<string[]>([]);
@@ -310,28 +312,162 @@ Focus on: Why multiple reports in the same location increase credibility, and wh
     }
   };
 
+  const analyzeTrustScoreRecommendations = async () => {
+    if (!detection) return;
+    setIsAnalyzingTrustScore(true);
+    
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+      if (!apiKey || apiKey.trim() === "") {
+        console.error("❌ TRUST SCORE RECOMMENDATIONS: Gemini API key not configured");
+        setTrustScoreRecommendations("❌ Error: Gemini API key not configured. Cannot generate recommendations.");
+        setIsAnalyzingTrustScore(false);
+        return;
+      }
+
+      console.log("🔍 Analyzing trust score recommendations with Gemini API...");
+      
+      const matchingCases = getMatchingCases();
+      const currentTrustScore = detection.trust_score ?? 0;
+      
+      // Build comprehensive case analysis data
+      const caseAnalysis = {
+        currentScore: currentTrustScore,
+        animalType: detection.animal_type,
+        location: detection.location_name,
+        confidence: (detection.confidence * 100).toFixed(1),
+        source: detection.source,
+        priority: detection.priority,
+        status: detection.status,
+        matchingCasesCount: matchingCases.length,
+        matchingCasesSummary: matchingCases.map(c => ({
+          confidence: (c.confidence * 100).toFixed(0),
+          priority: c.priority,
+          daysAgo: Math.floor((Date.now() - new Date(c.timestamp).getTime()) / (1000 * 60 * 60 * 24))
+        }))
+      };
+
+      // Create detailed analysis prompt for Gemini
+      const analysisPrompt = `You are a wildlife enforcement AI analyst. Analyze this case and provide trust score recommendations:
+
+CURRENT CASE DATA:
+- Animal Type: ${caseAnalysis.animalType}
+- Location: ${caseAnalysis.location}
+- Current Trust Score: ${caseAnalysis.currentScore}
+- Detection Confidence: ${caseAnalysis.confidence}%
+- Report Source: ${caseAnalysis.source}
+- Priority Level: ${caseAnalysis.priority}
+- Status: ${caseAnalysis.status}
+- Matching Cases Found: ${caseAnalysis.matchingCasesCount}
+
+MATCHING CASES PROFILE:
+${caseAnalysis.matchingCasesSummary.length > 0 
+  ? caseAnalysis.matchingCasesSummary.map((c, i) => `  Case ${i + 1}: Confidence ${c.confidence}%, Priority ${c.priority}, ${c.daysAgo} days ago`).join('\n')
+  : '  No matching cases (unique report)'}
+
+PROVIDE RECOMMENDATIONS on 2-3 key points:
+1. Should the Trust Score be adjusted? If yes, suggest a new score and why.
+2. What confidence factors support or undermine this score?
+3. What investigation actions should officers take based on this trust profile?
+
+Respond as actionable recommendations for wildlife enforcement officers.`;
+
+      console.log("📤 Sending trust score analysis request to Gemini...");
+      const response = await requestGeminiViaRest(apiKey, analysisPrompt);
+      
+      if (response) {
+        console.log("✓ Successfully received trust score recommendations from Gemini");
+        setTrustScoreRecommendations(response);
+      } else {
+        console.error("❌ Gemini API returned empty response");
+        setTrustScoreRecommendations("❌ Error: Gemini API returned no recommendations. Please try again.");
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error("❌ Trust score recommendations error:", errorMsg);
+      setTrustScoreRecommendations(`❌ Error: ${errorMsg}. Could not generate recommendations from Gemini API.`);
+    } finally {
+      setIsAnalyzingTrustScore(false);
+    }
+  };
+
   const requestGeminiViaRest = async (apiKey: string, prompt: string) => {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    // Validate API key format
+    if (!apiKey || apiKey.trim().length === 0) {
+      throw new Error("API key is empty or undefined");
+    }
+
+    if (!apiKey.startsWith("AIza")) {
+      console.warn("⚠️ API key doesn't match expected Gemini format (should start with 'AIza')");
+    }
+
+    const model = import.meta.env.VITE_GEMINI_MODEL || "gemini-2.5-flash";
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    
+    try {
+      console.log("🌐 Gemini API Request:");
+      console.log(`   Endpoint: generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`);
+      console.log(`   API Key: ${apiKey.substring(0, 20)}... (length: ${apiKey.length})`);
+      console.log(`   Model: ${model}`);
+      console.log(`   Prompt length: ${prompt.length} characters`);
+      
+      const requestBody = {
         contents: [
           {
             parts: [{ text: prompt }],
           },
         ],
-      }),
-    });
+      };
 
-    if (!response.ok) {
-      throw new Error(`Gemini HTTP ${response.status}`);
+      console.log("📤 Sending request to Gemini API...");
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      console.log(`📨 Received HTTP ${response.status} response from Gemini API`);
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error(`❌ Gemini API HTTP Error ${response.status}:`);
+        console.error(`   Response: ${errorData.substring(0, 300)}`);
+        
+        let errorMessage = `Gemini API Error (HTTP ${response.status})`;
+        if (response.status === 401) {
+          errorMessage = "Invalid or expired Gemini API key";
+        } else if (response.status === 403) {
+          errorMessage = "Gemini API access forbidden - check key permissions";
+        } else if (response.status === 429) {
+          errorMessage = "Gemini API rate limit exceeded";
+        } else if (response.status === 500) {
+          errorMessage = "Gemini API server error";
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      const data = await response.json();
+      console.log("✓ Successfully parsed Gemini API JSON response");
+      
+      const result = await getResponseText(data);
+      
+      if (!result) {
+        throw new Error("Gemini API returned no text in response");
+      }
+
+      console.log("✓ Extracted text content from response");
+      console.log(`   Content length: ${result.length} characters`);
+      
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error("❌ Gemini API Connection/Processing Error:", errorMsg);
+      console.error("   Full error:", error);
+      throw new Error(`Gemini API Failed: ${errorMsg}`);
     }
-
-    const data = await response.json();
-    return await getResponseText(data);
   };
 
   const handleDuplicateDetected = async (targetHash?: string) => {
@@ -413,17 +549,25 @@ Focus on: Why multiple reports in the same location increase credibility, and wh
 
   const analyzeDuplicateReasons = async (duplicates: Detection[]) => {
     setIsAnalyzingDuplicate(true);
+    setDuplicateReasons([]); // Clear previous reasons
+    console.log("🔍 Starting Gemini AI analysis for duplicate reasons...");
 
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-      if (!apiKey) {
-        setDuplicateReasons([
-          "Illegal evidence reuse",
-          "Fraudulent duplicate reports",
-          "Copy-paste image manipulation",
-          "Screenshot reposting",
-          "Unknown reason"
-        ]);
+      
+      if (!apiKey || apiKey.trim() === "") {
+        const errorMsg = "❌ GEMINI API KEY NOT CONFIGURED - Cannot analyze duplicate reasons. Please configure VITE_GEMINI_API_KEY in .env file.";
+        console.error(errorMsg);
+        setDuplicateReasons([errorMsg]);
+        setIsAnalyzingDuplicate(false);
+        return;
+      }
+
+      console.log("✓ Gemini API key found. Key format: ", apiKey.substring(0, 20) + "...");
+      
+      if (!detection || !duplicates || duplicates.length === 0) {
+        console.error("❌ Missing detection data or duplicates");
+        setDuplicateReasons(["Error: Missing case or duplicate data"]);
         setIsAnalyzingDuplicate(false);
         return;
       }
@@ -432,46 +576,114 @@ Focus on: Why multiple reports in the same location increase credibility, and wh
         .map((d) => `Case ${d.id}: ${d.animal_type} at ${d.location_name} (${new Date(d.timestamp).toLocaleDateString()})`)
         .join("\n");
 
-      const prompt = `For wildlife enforcement investigations, why would the EXACT SAME evidence image be used in multiple cases? 
-Current case: ${detection.animal_type} at ${detection.location_name}
-Duplicate cases:
+      const prompt = `You are a wildlife enforcement AI investigator. Analyze why identical evidence images appear in multiple cases.
+
+CURRENT CASE:
+- Species: ${detection.animal_type}
+- Location: ${detection.location_name}
+- Case ID: ${detection.id}
+
+DUPLICATE CASES WITH SAME EVIDENCE:
 ${casesSummary}
 
-Provide 4-5 possible reasons why the same image evidence appears in multiple cases. List reasons that could indicate illegal activities or report manipulation. Format as a JSON array of strings.
+TASK: Provide 4-5 possible reasons why the EXACT SAME evidence image appears in multiple cases. Focus on reasons that indicate:
+1. Illegal activities or fraud
+2. Evidence tampering
+3. Report manipulation
+4. Chain of custody violations
+5. Suspicious patterns
 
-Example format: ["Reason 1", "Reason 2", "Reason 3"]`;
+IMPORTANT: Each reason should be specific, professional, and investigation-relevant.
 
+RESPONSE FORMAT: Return ONLY a valid JSON array of strings, no additional text.
+Example: ["Reason 1", "Reason 2", "Reason 3"]`;
+
+      console.log("📤 Sending request to Gemini API...");
+      const geminiBannerModel = import.meta.env.VITE_GEMINI_MODEL || "gemini-2.5-flash";
+      console.log(`   Endpoint: generativelanguage.googleapis.com/v1beta/models/${geminiBannerModel}:generateContent`);
+      console.log(`   Model: ${geminiBannerModel}`);
+      console.log("   Duplicate cases: ", duplicates.length);
+      
       const response = await requestGeminiViaRest(apiKey, prompt);
       
-      // Try to parse JSON array from response
-      const jsonMatch = response?.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const reasons = JSON.parse(jsonMatch[0]);
-        setDuplicateReasons(Array.isArray(reasons) ? reasons : ["Unknown reason"]);
-      } else {
-        setDuplicateReasons([
-          "Illegal evidence reuse",
-          "Fraudulent duplicate reports", 
-          "Copy-paste image manipulation",
-          "Screenshot reposting",
-          "Unknown reason"
-        ]);
+      if (!response) {
+        throw new Error("Empty response from Gemini API");
       }
+
+      console.log("✓ Received response from Gemini API");
+      console.log("   Response length:", response.length);
+      
+      // Parse JSON array from response
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        throw new Error(`JSON array not found in response: ${response.substring(0, 200)}`);
+      }
+
+      const reasons = JSON.parse(jsonMatch[0]);
+      
+      if (!Array.isArray(reasons)) {
+        throw new Error("Response is not a JSON array");
+      }
+
+      if (reasons.length === 0) {
+        throw new Error("Gemini returned empty array of reasons");
+      }
+
+      // Validate all reasons are strings
+      const validReasons = reasons.filter((r): r is string => typeof r === "string");
+      if (validReasons.length === 0) {
+        throw new Error("No valid string reasons extracted from response");
+      }
+
+      console.log("✓ Successfully parsed Gemini AI reasons:");
+      validReasons.forEach((r, i) => console.log(`   ${i + 1}. ${r}`));
+      
+      setDuplicateReasons(validReasons);
     } catch (error) {
-      console.error("Failed to analyze duplicate reasons:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("❌ Gemini API analysis failed:", errorMessage);
+      console.log("Error details:", error);
+      
+      // Show error to user instead of fallback
       setDuplicateReasons([
-        "Illegal evidence reuse",
-        "Fraudulent duplicate reports",
-        "Copy-paste image manipulation",
-        "Screenshot reposting",
-        "Unknown reason"
+        `❌ AI Analysis Error: ${errorMessage}`,
+        "This could be due to: Invalid API key, API rate limit, network issues, or Gemini service unavailable.",
+        "Please check the browser console for details or try again later."
       ]);
     } finally {
       setIsAnalyzingDuplicate(false);
+      console.log("✓ Analysis attempt complete");
     }
   };
 
   const getReasonExplanation = (reason: string): string => {
+    // First check if it's an error message from API
+    if (reason.includes("❌") || reason.includes("Error:")) {
+      return reason; // Return error as-is
+    }
+
+    // Try to get explanation for known patterns
+    const commonPatterns: { [key: string]: string } = {
+      "illegal": "Evidence of illegal activity or unauthorized reuse",
+      "fraud": "Indicates fraudulent or deceptive practices",
+      "manipulate": "Evidence of intentional manipulation or tampering",
+      "false": "False or fabricated information",
+      "duplicate": "Unauthorized duplication across cases",
+      "reuse": "Same evidence improperly reused",
+      "screenshot": "Image reposted or recaptured",
+      "tampering": "Chain of custody violation or tampering",
+      "conspiracy": "Possible coordination between multiple parties",
+      "evidence": "Evidence integrity concerns",
+    };
+
+    // Check for pattern matches in the reason
+    for (const [pattern, explanation] of Object.entries(commonPatterns)) {
+      if (reason.toLowerCase().includes(pattern.toLowerCase())) {
+        return `${explanation}. ${reason}`;
+      }
+    }
+
+    // Fully hardcoded explanations for specific reasons (from API responses)
     const explanations: { [key: string]: string } = {
       "Illegal evidence reuse": "Same image used across multiple cases to fabricate false reports or evidence chains. This is a serious criminal offense in wildlife enforcement.",
       "Fraudulent duplicate reports": "Multiple false reports using identical evidence to manipulate statistics or hide actual violations. Indicates deliberate system abuse.",
@@ -480,7 +692,9 @@ Example format: ["Reason 1", "Reason 2", "Reason 3"]`;
       "Image sharing platform cross-posting": "Same wildlife image shared across multiple reports from different social media sources without proper verification.",
       "Unknown reason": "The duplicate was detected but the AI could not determine a specific reason. Manual investigation recommended."
     };
-    return explanations[reason] || reason;
+
+    // Return explanation if found, otherwise return the reason as-is
+    return explanations[reason] || `Investigation Finding: ${reason}`;
   };
 
   const fetchCaseAddress = async (caseId: string) => {
@@ -528,8 +742,9 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
         let responseText: string | null = null;
         try {
           const ai = new GoogleGenAI({ apiKey });
+          const geminiBannerModel = import.meta.env.VITE_GEMINI_MODEL || "gemini-2.5-flash";
           const response = await ai.models.generateContent({
-            model: "gemini-1.5-flash-latest",
+            model: geminiBannerModel,
             contents: prompt,
           });
           responseText = await getResponseText(response);
@@ -1980,8 +2195,7 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                 <p className="text-[10px] uppercase text-green-700 font-mono">📋 Matching Cases with Same Hash:</p>
                 {duplicateCases.map((dup) => (
                   <div key={dup.id} className="text-xs border-l-2 border-red-500/50 pl-3 py-2">
-                    <div className="text-green-900"><strong>{dup.animal_type}</strong> {dup.case_name && `(${dup.case_name})`}</div>
-                    <div className="text-green-700 text-[10px]">Case Name: {dup.case_name || "N/A"}</div>
+                    <div className="text-green-900"><strong>{dup.animal_type}</strong></div>
                     <div className="text-green-700 text-[10px]">State: {dup.location_name || "N/A"}</div>
                     <div className="text-green-700 text-[10px]">Address: {duplicateAddressById[dup.id] || "N/A"}</div>
                     <div className="text-green-700 text-[10px]">📅 {new Date(dup.timestamp).toLocaleString()}</div>
@@ -2010,10 +2224,9 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                         </div>
                         <div className="text-xs text-green-800 space-y-1">
                           <div className="text-green-900 font-semibold">
-                            {item.animalType} {item.caseName ? `(${item.caseName})` : ""}
+                            {item.animalType}
                           </div>
                           <div className="text-[10px]">Case ID: {item.caseId}</div>
-                          <div className="text-[10px]">Case Name: {item.caseName || "N/A"}</div>
                           <div className="text-[10px]">State: {item.locationName || "N/A"}</div>
                           <div className="text-[10px]">Address: {duplicateAddressById[item.caseId] || "N/A"}</div>
                           <div className="text-[10px]">Detected: {new Date(item.timestamp).toLocaleString()}</div>
@@ -2035,24 +2248,38 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
               </div>
 
               <div className="space-y-3 bg-lime-200/40 border border-lime-300 rounded p-4">
-                <p className="text-[10px] uppercase text-lime-700 font-mono font-bold">🔍 Gemini Analysis - Possible Reasons:</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] uppercase text-lime-700 font-mono font-bold">🔍 Gemini Analysis - Possible Reasons:</p>
+                  <span className="text-[8px] px-2 py-1 rounded bg-lime-600 text-white font-semibold">Auto Scanning</span>
+                </div>
                 {isAnalyzingDuplicate ? (
-                  <div className="flex items-center gap-2 text-lime-700 text-xs animate-pulse">
-                    <Activity size={14} />
-                    <span>AI analyzing investigation context...</span>
+                  <div className="flex items-center gap-2 text-lime-700 text-xs animate-pulse bg-white/50 p-4 rounded">
+                    <Activity size={14} className="animate-spin" />
+                    <span>Connecting to Gemini AI to analyze possible reasons...</span>
                   </div>
                 ) : duplicateReasons.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {duplicateReasons.map((reason, idx) => (
-                      <div key={idx} className="bg-white/80 border border-lime-300 rounded p-3">
-                        <p className="text-xs text-lime-700 font-semibold">→ {reason}</p>
-                        <p className="text-[10px] text-green-800 mt-1 leading-relaxed">
-                          {getReasonExplanation(reason)}
-                        </p>
+                      <div key={idx} className="bg-gradient-to-r from-white/95 to-lime-50/90 border-l-4 border-l-lime-500 border border-lime-200 rounded-r-lg p-4 hover:shadow-md transition-all hover:border-lime-400">
+                        <div className="flex items-start gap-3">
+                          <span className="flex-shrink-0 text-lime-600 font-bold text-sm bg-lime-100 rounded-full w-7 h-7 flex items-center justify-center">
+                            {idx + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-lime-800 font-semibold leading-snug mb-2">{reason}</p>
+                            <p className="text-xs text-green-700 leading-relaxed bg-white/60 p-2 rounded border border-green-200/50 italic">
+                              💡 {getReasonExplanation(reason)}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
-                ) : null}
+                ) : (
+                  <div className="text-sm text-lime-700 bg-white/60 p-4 rounded text-center font-medium">
+                    Waiting for Gemini AI analysis...
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end pt-2">
@@ -2549,6 +2776,76 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                     : "Single report detected. Monitor for additional reports in this location. Consider investigating if other signals (high confidence, verified source) support action."
                   }
                 </p>
+              </div>
+
+              {/* AI Trust Score Recommendations */}
+              <div className="bg-purple-200/50 border border-purple-400/50 rounded-lg p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-sm font-bold text-purple-900 flex items-center gap-2">
+                    <Sparkles size={16} className="text-purple-600" />
+                    AI Trust Score Recommendations
+                  </h4>
+                  <button
+                    onClick={analyzeTrustScoreRecommendations}
+                    disabled={isAnalyzingTrustScore}
+                    className="px-3 py-1 text-xs font-semibold bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-purple-400 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                  >
+                    {isAnalyzingTrustScore ? (
+                      <>
+                        <Activity size={12} className="animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={12} />
+                        Get Recommendations
+                      </>
+                    )}
+                  </button>
+                </div>
+                {isAnalyzingTrustScore ? (
+                  <div className="flex items-center gap-2 text-purple-700 animate-pulse font-mono text-xs">
+                    <Activity size={14} />
+                    <span>Analyzing with Gemini API...</span>
+                  </div>
+                ) : trustScoreRecommendations ? (
+                  <div className="text-sm text-purple-900 bg-white/50 rounded p-4 border border-purple-200 space-y-4">
+                    {trustScoreRecommendations.startsWith("❌") ? (
+                      <p className="text-red-700 font-semibold">{trustScoreRecommendations}</p>
+                    ) : (
+                      <div className="space-y-4">
+                        {trustScoreRecommendations.split('\n\n').map((paragraph, idx) => {
+                          const trimmed = paragraph.trim();
+                          if (!trimmed) return null;
+                          
+                          // Check if paragraph starts with a number
+                          const numberMatch = trimmed.match(/^(\d+[\.\)])\s+(.+)/);
+                          
+                          if (numberMatch) {
+                            const number = numberMatch[1];
+                            const content = numberMatch[2];
+                            return (
+                              <div key={idx} className="flex gap-3">
+                                <span className="flex-shrink-0 font-bold text-purple-700 bg-purple-100 rounded-full w-6 h-6 flex items-center justify-center text-xs">
+                                  {number.replace(/[.\)]/, '')}
+                                </span>
+                                <p className="flex-1 leading-relaxed text-purple-900">{content}</p>
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <p key={idx} className="leading-relaxed text-purple-900">{trimmed}</p>
+                          );
+                        }).filter(Boolean)}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-purple-800 italic">
+                    Click "Get Recommendations" to analyze this case with Gemini AI and receive actionable trust score insights.
+                  </p>
+                )}
               </div>
             </div>
           </div>

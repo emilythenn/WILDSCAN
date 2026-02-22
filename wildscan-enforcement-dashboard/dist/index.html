@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WILDSCAN Enforcement Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Google Maps API (key from Vite env) -->
+    <script
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD04MCoHQ_n0U7ODku5-bY5uKeU237_o0k&libraries=visualization&loading=async"
+      async
+      defer
+    ></script>
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #020617;
+      }
+      .font-mono {
+        font-family: 'JetBrains Mono', monospace;
+      }
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0f172a;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #10b981;
+        border-radius: 10px;
+      }
+      /* Custom Map Marker Glow */
+      .custom-marker {
+        cursor: pointer;
+      }
+      .gm-style-iw,
+      .gm-style-iw-c {
+        background: transparent !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+      }
+      .gm-style-iw-d {
+        overflow: hidden !important;
+      }
+      .gm-style-iw-t::after {
+        background: #0f172a !important;
+        box-shadow: 0 10px 24px rgba(2, 6, 23, 0.55) !important;
+      }
+      .gm-ui-hover-effect {
+        filter: invert(1) opacity(0.8);
+      }
+    </style>
+
+
+<!-- CSS is injected by Vite; avoid linking missing index.css -->
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.0.0",
+    "react/": "https://esm.sh/react@19.0.0/",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/": "https://esm.sh/react-dom@19.0.0/",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.475.0",
+    "firebase/app": "https://esm.sh/firebase@12.9.0/app",
+    "firebase/firestore": "https://esm.sh/firebase@12.9.0/firestore",
+    "@google/genai": "https://esm.sh/@google/genai@1.4.0",
+    "firebase/": "https://esm.sh/firebase@12.9.0/"
+  }
+}
+</script>
+  <script type="module" crossorigin src="/assets/index-DSQnMxvy.js"></script>
+</head>
+  <body>
+    <div id="root"></div>
+</body>
+</html>

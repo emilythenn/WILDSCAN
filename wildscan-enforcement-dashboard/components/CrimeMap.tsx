@@ -363,127 +363,358 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
 
   const buildRoute = useCallback((origin: { lat: number; lng: number } | null) => {
     const win = window as any;
+    console.log("🛣️ Building route...");
+    
     if (!googleMap.current || !win.google?.maps) {
-      setRouteStatus("Google Maps not ready.");
+      setRouteStatus("❌ Google Maps not ready.");
+      console.error("Google Maps not initialized");
       return;
     }
 
-    if (!selectedDetection || !Number.isFinite(selectedDetection.lat) || !Number.isFinite(selectedDetection.lng)) {
-      setRouteStatus("Select a case to build a route.");
+    if (!selectedDetection) {
+      setRouteStatus("❌ Select a case to build a route.");
+      console.warn("No detection selected");
+      return;
+    }
+
+    // Validate destination coordinates
+    const destLat = typeof selectedDetection.lat === "string" ? parseFloat(selectedDetection.lat) : selectedDetection.lat;
+    const destLng = typeof selectedDetection.lng === "string" ? parseFloat(selectedDetection.lng) : selectedDetection.lng;
+
+    if (!Number.isFinite(destLat) || !Number.isFinite(destLng)) {
+      setRouteStatus(`❌ Invalid destination coordinates (${destLat}, ${destLng})`);
+      console.error("Invalid destination coordinates:", { destLat, destLng });
+      return;
+    }
+
+    // Validate coordinate ranges (latitude: -90 to 90, longitude: -180 to 180)
+    if (Math.abs(destLat) > 90 || Math.abs(destLng) > 180) {
+      setRouteStatus("❌ Destination coordinates out of valid range");
+      console.error("Coordinates out of range:", { destLat, destLng });
       return;
     }
 
     if (!origin) {
-      setRouteStatus("Unable to determine your location.");
+      setRouteStatus("❌ Unable to determine your location.");
+      console.warn("Origin location not available");
       return;
     }
 
-    const destination = { lat: selectedDetection.lat, lng: selectedDetection.lng };
-    const originLatLng = new win.google.maps.LatLng(origin.lat, origin.lng);
-    const destinationLatLng = new win.google.maps.LatLng(destination.lat, destination.lng);
+    // Validate origin coordinates
+    const origLat = typeof origin.lat === "string" ? parseFloat(origin.lat) : origin.lat;
+    const origLng = typeof origin.lng === "string" ? parseFloat(origin.lng) : origin.lng;
 
-    if (!routeRendererRef.current) {
-      routeRendererRef.current = new win.google.maps.DirectionsRenderer({
-        suppressMarkers: true,
-        preserveViewport: true,
-        polylineOptions: {
-          strokeColor: "#38bdf8",
-          strokeOpacity: 0.9,
-          strokeWeight: 4,
+    if (!Number.isFinite(origLat) || !Number.isFinite(origLng)) {
+      setRouteStatus(`❌ Invalid origin coordinates (${origLat}, ${origLng})`);
+      console.error("Invalid origin coordinates:", { origLat, origLng });
+      return;
+    }
+
+    if (Math.abs(origLat) > 90 || Math.abs(origLng) > 180) {
+      setRouteStatus("❌ Origin coordinates out of valid range");
+      console.error("Origin coordinates out of range:", { origLat, origLng });
+      return;
+    }
+
+    const destination = { lat: destLat, lng: destLng };
+    
+    try {
+      const originLatLng = new win.google.maps.LatLng(origLat, origLng);
+      const destinationLatLng = new win.google.maps.LatLng(destLat, destLng);
+
+      console.log("📍 Route coordinates - Origin:", originLatLng, "Destination:", destinationLatLng);
+
+      if (!routeRendererRef.current) {
+        routeRendererRef.current = new win.google.maps.DirectionsRenderer({
+          suppressMarkers: true,
+          preserveViewport: true,
+          polylineOptions: {
+            strokeColor: "#38bdf8",
+            strokeOpacity: 0.9,
+            strokeWeight: 4,
+          },
+        });
+      }
+
+      routeRendererRef.current.setMap(googleMap.current);
+
+      const service = new win.google.maps.DirectionsService();
+
+      if (!originMarkerRef.current) {
+        originMarkerRef.current = new win.google.maps.Marker({
+          position: origin,
+          map: googleMap.current,
+          label: "A",
+        });
+        originMarkerRef.current.__originData = { location: origin, address: null };
+        originMarkerRef.current.addListener("click", () => {
+          if (infoWindowRef.current) {
+            const data = originMarkerRef.current.__originData || { location: origin, address: null };
+            infoWindowRef.current.setContent(buildOriginInfoContent(data.address, data.location));
+            infoWindowRef.current.open({ map: googleMap.current, anchor: originMarkerRef.current });
+          }
+        });
+      } else {
+        originMarkerRef.current.setPosition(origin);
+        originMarkerRef.current.setMap(googleMap.current);
+        originMarkerRef.current.__originData = { location: origin, address: null };
+      }
+
+      updateCurrentAddress(origin);
+      
+      console.log("📤 Sending route request to Google Directions API...");
+      setRouteStatus("🔄 Building route...");
+      
+      service.route(
+        {
+          origin: originLatLng,
+          destination: destinationLatLng,
+          travelMode: win.google.maps.TravelMode.DRIVING,
         },
-      });
-    }
-
-    routeRendererRef.current.setMap(googleMap.current);
-
-    const service = new win.google.maps.DirectionsService();
-
-    if (!originMarkerRef.current) {
-      originMarkerRef.current = new win.google.maps.Marker({
-        position: origin,
-        map: googleMap.current,
-        label: "A",
-      });
-      originMarkerRef.current.__originData = { location: origin, address: null };
-      originMarkerRef.current.addListener("click", () => {
-        if (infoWindowRef.current) {
-          const data = originMarkerRef.current.__originData || { location: origin, address: null };
-          infoWindowRef.current.setContent(buildOriginInfoContent(data.address, data.location));
-          infoWindowRef.current.open({ map: googleMap.current, anchor: originMarkerRef.current });
-        }
-      });
-    } else {
-      originMarkerRef.current.setPosition(origin);
-      originMarkerRef.current.setMap(googleMap.current);
-      originMarkerRef.current.__originData = { location: origin, address: null };
-    }
-
-    updateCurrentAddress(origin);
-    service.route(
-      {
-        origin: originLatLng,
-        destination: destinationLatLng,
-        travelMode: win.google.maps.TravelMode.DRIVING,
-      },
-      (result: any, status: string) => {
-        if (status === "OK" && result) {
-          routeRendererRef.current.setDirections(result);
-          const leg = result.routes?.[0]?.legs?.[0];
-          const duration = leg?.duration?.text;
-          const distance = leg?.distance?.text;
-          const steps = Array.isArray(leg?.steps)
-            ? leg.steps
-                .map((step: any) => {
-                  const instruction = (step?.instructions || "").replace(/<[^>]+>/g, "").trim();
-                  const endLat = toLat(step?.end_location);
-                  const endLng = toLng(step?.end_location);
-                  if (!instruction || !Number.isFinite(endLat) || !Number.isFinite(endLng)) return null;
-                  return {
-                    instruction,
-                    endLat,
-                    endLng,
-                    distance: step?.distance?.text,
-                    duration: step?.duration?.text,
-                  };
-                })
-                .filter(Boolean)
-            : [];
-          setRouteSummary({ duration, distance });
-          setRouteSteps(steps as Array<{ instruction: string; endLat: number; endLng: number; distance?: string; duration?: string }>);
-          setCurrentStepIndex(0);
-          lastSpokenIndexRef.current = null;
-          setRouteStatus("Optimized route ready. Select Start to begin guidance.");
-        } else {
-          const hint = status === "REQUEST_DENIED"
-            ? "Check Maps API key, Directions API, and billing."
-            : status === "ZERO_RESULTS"
-              ? "No driving route found."
-              : "";
-          setRouteStatus(`Unable to build route to case (${status}). ${hint}`.trim());
-          setRouteSummary(null);
-          setRouteSteps([]);
-          setCurrentStepIndex(0);
-          lastSpokenIndexRef.current = null;
-          if (routeRendererRef.current) {
-            routeRendererRef.current.setMap(null);
+        (result: any, status: string) => {
+          console.log("📨 Directions API Response Status:", status);
+          
+          if (status === "OK" && result && result.routes && result.routes.length > 0) {
+            console.log("✅ Route found successfully");
+            routeRendererRef.current.setDirections(result);
+            const leg = result.routes[0]?.legs?.[0];
+            const duration = leg?.duration?.text;
+            const distance = leg?.distance?.text;
+            const durationSeconds = leg?.duration?.value || 0;
+            
+            const steps = Array.isArray(leg?.steps)
+              ? leg.steps
+                  .map((step: any) => {
+                    const instruction = (step?.instructions || "").replace(/<[^>]+>/g, "").trim();
+                    const endLat = toLat(step?.end_location);
+                    const endLng = toLng(step?.end_location);
+                    if (!instruction || !Number.isFinite(endLat) || !Number.isFinite(endLng)) return null;
+                    return {
+                      instruction,
+                      endLat,
+                      endLng,
+                      distance: step?.distance?.text,
+                      duration: step?.duration?.text,
+                    };
+                  })
+                  .filter(Boolean)
+              : [];
+            
+            setRouteSummary({ duration, distance });
+            setRouteSteps(steps as Array<{ instruction: string; endLat: number; endLng: number; distance?: string; duration?: string }>);
+            setCurrentStepIndex(0);
+            lastSpokenIndexRef.current = null;
+            setRouteStatus(`✅ Optimized route ready! ${distance} • ${duration} • ${steps.length} steps. Click "Start Guidance" to begin.`);
+          } else {
+            let errorMessage = `Unable to build route to case (${status})`;
+            let hint = "";
+            
+            switch(status) {
+              case "ZERO_RESULTS":
+                hint = "📍 No driving route exists. Try a different location or check coordinates are correct.";
+                console.error("ZERO_RESULTS: No route found between coordinates");
+                break;
+              case "NOT_FOUND":
+                hint = "🗺️ One or both locations could not be found on the map.";
+                console.error("NOT_FOUND: Location not found");
+                break;
+              case "MAX_WAYPOINTS_EXCEEDED":
+                hint = "⚠️ Too many waypoints. Simplify the route.";
+                console.error("MAX_WAYPOINTS_EXCEEDED");
+                break;
+              case "INVALID_REQUEST":
+                hint = "❌ Invalid request. Check origin and destination.";
+                console.error("INVALID_REQUEST", { origin: originLatLng, destination: destinationLatLng });
+                break;
+              case "OVER_QUERY_LIMIT":
+                hint = "⏱️ API rate limit exceeded. Try again later.";
+                console.error("OVER_QUERY_LIMIT");
+                break;
+              case "REQUEST_DENIED":
+                hint = "🔑 Check Maps API key, Directions API enabled, and billing configured.";
+                console.error("REQUEST_DENIED: Check API key and permissions");
+                break;
+              case "UNKNOWN_ERROR":
+                hint = "⚠️ Unknown server error. Try again later.";
+                console.error("UNKNOWN_ERROR");
+                break;
+              default:
+                hint = "Please check your location and try again.";
+            }
+            
+            setRouteStatus(`${errorMessage}. ${hint}`.trim());
+            setRouteSummary(null);
+            setRouteSteps([]);
+            setCurrentStepIndex(0);
+            lastSpokenIndexRef.current = null;
+            if (routeRendererRef.current) {
+              routeRendererRef.current.setMap(null);
+            }
           }
         }
+      );
+    } catch (error) {
+      console.error("❌ Route building error:", error);
+      setRouteStatus(`❌ Error building route: ${error instanceof Error ? error.message : "Unknown error"}`);
+      setRouteSummary(null);
+      setRouteSteps([]);
+      setCurrentStepIndex(0);
+      if (routeRendererRef.current) {
+        routeRendererRef.current.setMap(null);
       }
-    );
+    }
   }, [buildOriginInfoContent, currentAddress, currentLocation, selectedDetection, updateCurrentAddress]);
 
+  const optimizeMultipleCaseRoute = useCallback(async (origin: { lat: number; lng: number } | null) => {
+    const win = window as any;
+    console.log("🚀 Optimizing route for multiple cases...");
+    
+    if (!googleMap.current || !win.google?.maps) {
+      setRouteStatus("❌ Google Maps not ready.");
+      return;
+    }
+
+    if (!markerDetections || markerDetections.length === 0) {
+      setRouteStatus("❌ No cases available for multi-case routing.");
+      return;
+    }
+
+    if (!origin) {
+      setRouteStatus("❌ Unable to determine your location.");
+      return;
+    }
+
+    try {
+      const service = new win.google.maps.DirectionsService();
+      
+      // Take closest 3-5 cases for route optimization (Google Directions has limits)
+      const closestCases = markerDetections
+        .map(detection => ({
+          ...detection,
+          distance: distanceMeters(origin, { lat: detection.lat, lng: detection.lng })
+        }))
+        .sort((a, b) => a.distance - b.distance)
+        .slice(1, Math.min(5, markerDetections.length)); // Exclude origin, take up to 4 cases
+
+      if (closestCases.length === 0) {
+        setRouteStatus("❌ No cases found near your location.");
+        return;
+      }
+
+      console.log(`📍 Optimizing route for ${closestCases.length} nearby cases`);
+      setRouteStatus(`🔄 Optimizing route through ${closestCases.length} cases...`);
+
+      const originLatLng = new win.google.maps.LatLng(origin.lat, origin.lng);
+      const lastCase = closestCases[closestCases.length - 1];
+      const destinationLatLng = new win.google.maps.LatLng(lastCase.lat, lastCase.lng);
+      
+      const waypoints = closestCases.slice(0, -1).map(c => ({
+        location: new win.google.maps.LatLng(c.lat, c.lng),
+        stopover: true
+      }));
+
+      service.route(
+        {
+          origin: originLatLng,
+          destination: destinationLatLng,
+          waypoints: waypoints,
+          optimizeWaypoints: true,
+          travelMode: win.google.maps.TravelMode.DRIVING,
+        },
+        (result: any, status: string) => {
+          console.log("📨 Multi-case route response:", status);
+          
+          if (status === "OK" && result) {
+            console.log("✅ Multi-case route optimized successfully");
+            if (!routeRendererRef.current) {
+              routeRendererRef.current = new win.google.maps.DirectionsRenderer({
+                suppressMarkers: true,
+                preserveViewport: true,
+                polylineOptions: {
+                  strokeColor: "#10b981",
+                  strokeOpacity: 0.9,
+                  strokeWeight: 5,
+                },
+              });
+            }
+            routeRendererRef.current.setMap(googleMap.current);
+            routeRendererRef.current.setDirections(result);
+
+            const allSteps: any[] = [];
+            let totalDistance = 0;
+            let totalDuration = 0;
+
+            result.routes[0].legs.forEach((leg: any) => {
+              totalDistance += leg.distance?.value || 0;
+              totalDuration += leg.duration?.value || 0;
+              if (Array.isArray(leg.steps)) {
+                allSteps.push(...leg.steps);
+              }
+            });
+
+            const distance = `${(totalDistance / 1000).toFixed(1)} km`;
+            const hours = Math.floor(totalDuration / 3600);
+            const minutes = Math.floor((totalDuration % 3600) / 60);
+            const duration = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+
+            const steps = allSteps
+              .map((step: any) => {
+                const instruction = (step?.instructions || "").replace(/<[^>]+>/g, "").trim();
+                const endLat = toLat(step?.end_location);
+                const endLng = toLng(step?.end_location);
+                if (!instruction || !Number.isFinite(endLat) || !Number.isFinite(endLng)) return null;
+                return {
+                  instruction,
+                  endLat,
+                  endLng,
+                  distance: step?.distance?.text,
+                  duration: step?.duration?.text,
+                };
+              })
+              .filter(Boolean);
+
+            setRouteSummary({ duration, distance });
+            setRouteSteps(steps as any);
+            setCurrentStepIndex(0);
+            lastSpokenIndexRef.current = null;
+            setRouteStatus(`✅ Best route optimized! ${distance} • ${duration} • ${closestCases.length} cases. Click "Start Guidance" to patrol.`);
+          } else {
+            console.error("❌ Multi-case route failed:", status);
+            setRouteStatus(`❌ Could not optimize multi-case route (${status}). Try selecting a single case instead.`);
+          }
+        }
+      );
+    } catch (error) {
+      console.error("❌ Multi-case route error:", error);
+      setRouteStatus(`❌ Error optimizing route: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }, [markerDetections, distanceMeters]);
+
   const handlePatrolRoute = useCallback(async () => {
-    setRouteStatus("Fetching current location...");
+    console.log("🗺️ Starting patrol route building...");
+    setRouteStatus("📍 Fetching current location...");
     const origin = await getBrowserLocation();
     if (origin) {
+      console.log("✓ Location obtained:", origin);
       setCurrentLocation(origin);
       updateCurrentAddress(origin);
-      setRouteStatus("Location locked. Building route...");
-      buildRoute(origin);
+      
+      // If a single case is selected, build a direct route
+      if (selectedDetection) {
+        console.log("📍 Single case selected, building direct route");
+        setRouteStatus("🔄 Building direct route to selected case...");
+        buildRoute(origin);
+      } else {
+        // Offer multi-case optimization for patrol
+        console.log("📍 No single case selected, optimizing multi-case patrol route");
+        setRouteStatus("🚀 Optimizing best patrol route through multiple cases...");
+        optimizeMultipleCaseRoute(origin);
+      }
     } else {
-      setRouteStatus("Unable to fetch current location. Please enable location permissions.");
+      console.error("❌ Location access denied");
+      setRouteStatus("❌ Unable to fetch current location. Please enable location permissions and try again.");
     }
-  }, [buildRoute, updateCurrentAddress]);
+  }, [buildRoute, selectedDetection, updateCurrentAddress, optimizeMultipleCaseRoute]);
 
   useEffect(() => {
     if (!selectedDetection) return;
