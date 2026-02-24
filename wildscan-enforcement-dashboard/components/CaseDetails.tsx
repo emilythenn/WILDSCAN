@@ -94,7 +94,49 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
   const primaryEvidence = evidenceItems[0];
   const onlineEvidenceLink = useMemo(() => {
     const fromEvidence = evidenceItems.find((item) => typeof item.onlineLink === "string" && item.onlineLink.trim().length > 0)?.onlineLink;
-    return fromEvidence?.trim() || "";
+    if (!fromEvidence) return "";
+
+    const sanitizeExternalUrl = (rawValue: string) => {
+      const cleaned = rawValue
+        .trim()
+        .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+        .replace(/[\u200B-\u200D\uFEFF\u202A-\u202E]/g, "")
+        .trim();
+
+      if (!cleaned) return "";
+
+      const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;
+
+      try {
+        const url = new URL(withProtocol);
+        const hostname = url.hostname.toLowerCase();
+
+        if (hostname === "youtu.be") {
+          const videoId = url.pathname.replace(/^\/+/, "").split("/")[0];
+          if (!videoId) return url.toString();
+          const watchUrl = new URL("https://www.youtube.com/watch");
+          watchUrl.searchParams.set("v", videoId);
+          return watchUrl.toString();
+        }
+
+        if (hostname.includes("youtube.com")) {
+          const pathParts = url.pathname.split("/").filter(Boolean);
+          const firstPath = pathParts[0]?.toLowerCase();
+          const secondPath = pathParts[1];
+          if ((firstPath === "shorts" || firstPath === "embed") && secondPath) {
+            const watchUrl = new URL("https://www.youtube.com/watch");
+            watchUrl.searchParams.set("v", secondPath);
+            return watchUrl.toString();
+          }
+        }
+
+        return url.toString();
+      } catch {
+        return "";
+      }
+    };
+
+    return sanitizeExternalUrl(fromEvidence);
   }, [evidenceItems]);
   const normalizedDiscoveryType = (detection?.discovery_type || "").toString().trim().toLowerCase();
   const isOnlineDiscovery = normalizedDiscoveryType.includes("online");
