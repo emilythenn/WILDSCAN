@@ -218,7 +218,7 @@ For comprehensive feature list, setup instructions, troubleshooting, and API con
 
 These tools were selected to combine real-time operational response, AI-assisted investigation, and spatial decision support in one enforcement workflow.
 
-### 3) Implementation Approach
+## Implementation Approach
 
 - **Real-time operations:** Firestore listeners keep dashboard state continuously updated without manual refresh.
 - **Case intelligence pipeline:** Each case combines source metadata, confidence signals, trust score factors, and Gemini-generated insights.
@@ -226,14 +226,14 @@ These tools were selected to combine real-time operational response, AI-assisted
 - **Investigation UX:** Alert feed, filters, map, and case details panels are linked to reduce context-switching and speed officer response.
 - **Resilience design:** Fallback logic is used when AI services are unavailable, preserving core dashboard functionality during degraded conditions.
 
-### 4) Innovation Highlights
+## Innovation Highlights
 
 - **Cryptographic chain-of-custody in a live dashboard:** Evidence hashing and duplicate detection are embedded directly in daily investigation workflows.
 - **AI explainability for enforcement decisions:** Gemini outputs are surfaced with human-readable rationale rather than opaque scores only.
 - **Trust score + similarity context:** Cases are not only scored, but linked to matching historical patterns to support prioritization.
 - **Field-first accessibility:** Speech feedback and voice search support hands-free and inclusive operation for officers in active environments.
 
-### 5) Challenges Faced (and How They Were Addressed)
+## Challenges Faced 
 
 - **Challenge: Reliable real-time updates at UI level**  
   **Response:** Structured Firestore subscription patterns and deterministic sorting to avoid stale or out-of-order case views.
