@@ -80,8 +80,7 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
   
-  // Reporting State
-  String discoveryType = "Online"; // Default choice
+  String discoveryType = "Online";
   String selectedWildlife = "Pangolin";
   String otherWildlife = "";
   String selectedPlatform = "Facebook Marketplace";
@@ -100,42 +99,23 @@ class _MainNavigationState extends State<MainNavigation> {
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _manualLocationController = TextEditingController();
 
-  // Mapping coordinates to Malaysia States
   String _getMalaysiaState(String? raw) {
     if (raw == null || raw.isEmpty) return "Unknown State";
-    
     String input = raw.toLowerCase();
-    
     final statesMap = {
-      "johor": "Johor",
-      "kedah": "Kedah",
-      "kelantan": "Kelantan",
-      "melaka": "Melaka",
-      "malacca": "Melaka",
-      "negeri sembilan": "Negeri Sembilan",
-      "pahang": "Pahang",
-      "perak": "Perak",
-      "perlis": "Perlis",
-      "pulau pinang": "Pulau Pinang",
-      "penang": "Pulau Pinang",
-      "sabah": "Sabah",
-      "sarawak": "Sarawak",
-      "selangor": "Selangor",
-      "terengganu": "Terengganu",
-      "kuala lumpur": "Kuala Lumpur",
-      "labuan": "Labuan",
-      "putrajaya": "Putrajaya"
+      "johor": "Johor", "kedah": "Kedah", "kelantan": "Kelantan", "melaka": "Melaka",
+      "malacca": "Melaka", "negeri sembilan": "Negeri Sembilan", "pahang": "Pahang",
+      "perak": "Perak", "perlis": "Perlis", "pulau pinang": "Pulau Pinang",
+      "penang": "Pulau Pinang", "sabah": "Sabah", "sarawak": "Sarawak",
+      "selangor": "Selangor", "terengganu": "Terengganu", "kuala lumpur": "Kuala Lumpur",
+      "labuan": "Labuan", "putrajaya": "Putrajaya"
     };
-
     for (var entry in statesMap.entries) {
-      if (input.contains(entry.key)) {
-        return entry.value;
-      }
+      if (input.contains(entry.key)) return entry.value;
     }
     return "Other";
   }
 
-  // Handle GPS and Reverse Geocoding
   Future<void> _updateLocation() async {
     setState(() => displayLocation = "Searching for GPS signal...");
     try {
@@ -149,36 +129,110 @@ class _MainNavigationState extends State<MainNavigation> {
       }
       Position position = await Geolocator.getCurrentPosition(timeLimit: const Duration(seconds: 15));
       lat = position.latitude; lng = position.longitude;
+      
       String coords = "${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}";
       String placeName = ""; String stateOnly = "Unknown State";
       
       if (kIsWeb) {
-        try {
-          final url = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=10&addressdetails=1');
-          final response = await http.get(url);
-          if (response.statusCode == 200) {
-            final data = json.decode(response.body);
-            final addr = data['address'];
-            stateOnly = _getMalaysiaState(addr['state'] ?? addr['city'] ?? "");
-            placeName = addr['city'] ?? addr['state'] ?? addr['town'] ?? "";
-          }
-        } catch (e) { debugPrint("Web Geocoding failed: $e"); }
+        final url = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=10&addressdetails=1');
+        final response = await http.get(url, headers: {'User-Agent': 'WildScan_Hackathon'});
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          final addr = data['address'];
+          stateOnly = _getMalaysiaState(addr['state'] ?? addr['city'] ?? "");
+          placeName = addr['city'] ?? addr['state'] ?? addr['town'] ?? "";
+        }
       } else {
-        try {
-          List<Placemark> placemarks = await placemarkFromCoordinates(lat!, lng!);
-          if (placemarks.isNotEmpty) {
-            Placemark p = placemarks[0];
-            stateOnly = _getMalaysiaState(p.administrativeArea ?? p.locality);
-            placeName = "${p.locality ?? p.subAdministrativeArea ?? ''}";
-          }
-        } catch (e) { debugPrint("Mobile Geocoding failed: $e"); }
+        List<Placemark> placemarks = await placemarkFromCoordinates(lat!, lng!);
+        if (placemarks.isNotEmpty) {
+          Placemark p = placemarks[0];
+          stateOnly = _getMalaysiaState(p.administrativeArea ?? p.locality);
+          placeName = "${p.locality ?? p.subAdministrativeArea ?? ''}";
+        }
       }
       setState(() { 
         detectedState = stateOnly; 
         displayLocation = placeName.trim().isEmpty ? coords : "${placeName.trim()} ($coords)";
-        _manualLocationController.text = displayLocation; // Update text field
+        _manualLocationController.text = displayLocation;
       });
     } catch (e) { setState(() => displayLocation = "Location Timeout. Tap to retry."); }
+  }
+
+  Future<void> _syncCoordinatesFromManualAddress(String address) async {
+    if (address.isEmpty) return;
+    try {
+      if (kIsWeb) {
+        final encodedAddr = Uri.encodeComponent(address);
+        final url = Uri.parse('https://nominatim.openstreetmap.org/search?q=$encodedAddr&format=json&limit=1');
+        final response = await http.get(url, headers: {'User-Agent': 'WildScan_Hackathon'});
+        if (response.statusCode == 200) {
+          final List data = json.decode(response.body);
+          if (data.isNotEmpty) {
+            lat = double.parse(data[0]['lat']);
+            lng = double.parse(data[0]['lon']);
+          }
+        }
+      } else {
+        List<Location> locations = await locationFromAddress(address);
+        if (locations.isNotEmpty) {
+          lat = locations.first.latitude;
+          lng = locations.first.longitude;
+        }
+      }
+    } catch (e) { debugPrint("Manual Geocoding Sync Failed: $e"); }
+  }
+
+  Future<void> _handleSubmission() async {
+    setState(() => _isLoading = true);
+    try {
+      if (discoveryType == "Physical") {
+        await _syncCoordinatesFromManualAddress(_manualLocationController.text);
+      }
+
+      String uniqueId = await _getUniqueCaseId();
+      String numPart = uniqueId.split('-')[1];
+      final String? mediaUrl = await _uploadToCloudinary();
+      if (mediaUrl == null) throw Exception("Upload failed");
+
+      String finalSpecies = (selectedWildlife == "Others (Please specify)") ? (otherWildlife.isEmpty ? "Unknown Species" : otherWildlife) : selectedWildlife;
+      String finalPlatform = (selectedPlatform == "Others (Please specify)") ? (otherPlatform.isEmpty ? "Unknown Platform" : otherPlatform) : selectedPlatform;
+
+      String userTypedAddress = _manualLocationController.text;
+      String parsedState = _getMalaysiaState(userTypedAddress);
+      String finalState = (parsedState == "Unknown State" || parsedState == "Other") ? detectedState : parsedState;
+
+      final firestore = FirebaseFirestore.instance;
+      final batch = firestore.batch();
+      
+      String finalAddressDescription = discoveryType == "Online" ? "[Online Discovery] $userTypedAddress" : userTypedAddress;
+
+      batch.set(firestore.collection("cases").doc(uniqueId), {
+        "caseId": uniqueId, 
+        "speciesDetected": finalSpecies, 
+        "status": "OPEN", 
+        "createdAt": FieldValue.serverTimestamp(), 
+        "reportTime": reportTime, 
+        "state": finalState,
+        "discoveryType": discoveryType,
+        "location": { "lat": lat ?? 0.0, "lng": lng ?? 0.0, "fullAddress": finalAddressDescription },
+      });
+
+      batch.set(firestore.collection("evidence").doc("EV-$numPart"), {
+        "evidenceId": "EV-$numPart", 
+        "caseId": uniqueId, 
+        "fileUrl": mediaUrl, 
+        "mediaType": selectedImage!.path.toLowerCase().endsWith('.mp4') ? "video" : "image", 
+        "platformSource": discoveryType == "Online" ? finalPlatform : "Physical Location",
+        "onlineLink": discoveryType == "Online" ? onlineLink : "",
+        "uploadedAt": FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+      setState(() { currentGeneratedId = uniqueId; _isLoading = false; _currentIndex = 2; });
+    } catch (e) { 
+      setState(() => _isLoading = false); 
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Submission Error: $e"))); 
+    }
   }
 
   void _resetApp() {
@@ -243,64 +297,6 @@ class _MainNavigationState extends State<MainNavigation> {
     } catch (e) { return null; }
   }
 
-  Future<void> _handleSubmission() async {
-    setState(() => _isLoading = true);
-    try {
-      String uniqueId = await _getUniqueCaseId();
-      String numPart = uniqueId.split('-')[1];
-      final String? mediaUrl = await _uploadToCloudinary();
-      if (mediaUrl == null) throw Exception("Upload failed");
-
-      String finalSpecies = (selectedWildlife == "Others (Please specify)") ? (otherWildlife.isEmpty ? "Unknown Species" : otherWildlife) : selectedWildlife;
-      String finalPlatform = (selectedPlatform == "Others (Please specify)") ? (otherPlatform.isEmpty ? "Unknown Platform" : otherPlatform) : selectedPlatform;
-
-      String userTypedAddress = _manualLocationController.text;
-      String parsedState = _getMalaysiaState(userTypedAddress);
-      
-      String finalState = (parsedState == "Unknown State" || parsedState == "Other") 
-          ? detectedState 
-          : parsedState;
-
-      final firestore = FirebaseFirestore.instance;
-      final batch = firestore.batch();
-      
-      String finalAddressDescription = discoveryType == "Online" 
-          ? "[Online Discovery] $userTypedAddress" 
-          : userTypedAddress;
-
-      batch.set(firestore.collection("cases").doc(uniqueId), {
-        "caseId": uniqueId, 
-        "speciesDetected": finalSpecies, 
-        "status": "OPEN", 
-        "createdAt": FieldValue.serverTimestamp(), 
-        "reportTime": reportTime, 
-        "state": finalState,
-        "discoveryType": discoveryType,
-        "location": { 
-          "lat": lat ?? 0.0, 
-          "lng": lng ?? 0.0, 
-          "fullAddress": finalAddressDescription 
-        },
-      });
-
-      batch.set(firestore.collection("evidence").doc("EV-$numPart"), {
-        "evidenceId": "EV-$numPart", 
-        "caseId": uniqueId, 
-        "fileUrl": mediaUrl, 
-        "mediaType": selectedImage!.path.toLowerCase().endsWith('.mp4') ? "video" : "image", 
-        "platformSource": discoveryType == "Online" ? finalPlatform : "Physical Location",
-        "onlineLink": discoveryType == "Online" ? onlineLink : "",
-        "uploadedAt": FieldValue.serverTimestamp(),
-      });
-
-      await batch.commit();
-      setState(() { currentGeneratedId = uniqueId; _isLoading = false; _currentIndex = 2; });
-    } catch (e) { 
-      setState(() => _isLoading = false); 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Submission Error: $e"))); 
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final List<Widget> _pages = [
@@ -363,13 +359,11 @@ class _MainNavigationState extends State<MainNavigation> {
       context: context,
       backgroundColor: const Color(0xFFF1F8E8),
       isScrollControlled: true, 
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.4,
-        minChildSize: 0.2,     
-        maxChildSize: 0.6,    
+        minChildSize: 0.2, 
+        maxChildSize: 0.6, 
         expand: false,
         builder: (context, scrollController) {
           return SingleChildScrollView(
@@ -379,21 +373,11 @@ class _MainNavigationState extends State<MainNavigation> {
               child: Column( 
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 40, height: 5, 
-                      margin: EdgeInsets.only(bottom: 20),
-                      decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                  const Text(
-                    "Select Evidence Type", 
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Color(0xFF121212))
-                  ),
+                  Center(child: Container(width: 40, height: 5, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(10)))),
+                  const Text("Select Evidence Type", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Color(0xFF121212))),
                   const SizedBox(height: 20),
                   Wrap(
-                    spacing: 20, 
-                    runSpacing: 20,
+                    spacing: 20, runSpacing: 20,
                     children: [
                       _pickerTile(Icons.camera_alt, "Take a Photo", () => _pickImage(ImageSource.camera)),
                       _pickerTile(Icons.photo_library, "Upload Photo / Screenshot", () => _pickImage(ImageSource.gallery)),
@@ -430,7 +414,6 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 }
 
-// --- SCREEN 1: LANDING / CAMERA SELECTION ---
 class CameraScreen extends StatelessWidget {
   final VoidCallback onTap;
   const CameraScreen({super.key, required this.onTap});
@@ -444,25 +427,11 @@ class CameraScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 30),
-            Row(
-              children: [
-                SvgPicture.string(
-                  '''<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="32" cy="32" r="28" fill="#ffffff" stroke="#1d4ed8" stroke-width="3" />
-                    <line x1="32" y1="6" x2="32" y2="14" stroke="#1d4ed8" stroke-width="3" stroke-linecap="round" />
-                    <line x1="32" y1="50" x2="32" y2="58" stroke="#1d4ed8" stroke-width="3" stroke-linecap="round" />
-                    <line x1="6" y1="32" x2="14" y2="32" stroke="#1d4ed8" stroke-width="3" stroke-linecap="round" />
-                    <line x1="50" y1="32" x2="58" y2="32" stroke="#1d4ed8" stroke-width="3" stroke-linecap="round" />
-                    <path d="M18 38c2-6 10-11 18-11 8 0 13 3 16 7-2 1-4 1-6 0-3-2-7-2-11 0l-4 2-2 6-5 2c-4 2-9 1-10-6z" fill="#111827" />
-                    <path d="M42 26l8-3" stroke="#ef4444" stroke-width="3" stroke-linecap="round" />
-                    <line x1="14" y1="50" x2="50" y2="14" stroke="#ef4444" stroke-width="4" stroke-linecap="round" />
-                  </svg>''',
-                  height: 45,
-                ),
-                const SizedBox(width: 12),
-                const Text("WILDSCAN", style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -1, color: Color(0xFF121212))),
-              ],
-            ),
+            Row(children: [
+              SvgPicture.string('''<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><circle cx="32" cy="32" r="28" fill="#ffffff" stroke="#1d4ed8" stroke-width="3" /><line x1="32" y1="6" x2="32" y2="14" stroke="#1d4ed8" stroke-width="3" stroke-linecap="round" /><line x1="32" y1="50" x2="32" y2="58" stroke="#1d4ed8" stroke-width="3" stroke-linecap="round" /><line x1="6" y1="32" x2="14" y2="32" stroke="#1d4ed8" stroke-width="3" stroke-linecap="round" /><line x1="50" y1="32" x2="58" y2="32" stroke="#1d4ed8" stroke-width="3" stroke-linecap="round" /><path d="M18 38c2-6 10-11 18-11 8 0 13 3 16 7-2 1-4 1-6 0-3-2-7-2-11 0l-4 2-2 6-5 2c-4 2-9 1-10-6z" fill="#111827" /><path d="M42 26l8-3" stroke="#ef4444" stroke-width="3" stroke-linecap="round" /><line x1="14" y1="50" x2="50" y2="14" stroke="#ef4444" stroke-width="4" stroke-linecap="round" /></svg>''', height: 45),
+              const SizedBox(width: 12),
+              const Text("WILDSCAN", style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -1, color: Color(0xFF121212))),
+            ]),
             const Text("Real-Time Wildlife Crime Detection", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
             const SizedBox(height: 40),
             GestureDetector(
@@ -470,28 +439,21 @@ class CameraScreen extends StatelessWidget {
               child: Container(
                 width: double.infinity, padding: const EdgeInsets.all(40),
                 decoration: BoxDecoration(color: const Color(0xFFCDE48A), borderRadius: BorderRadius.circular(35)),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(20), decoration: const BoxDecoration(color: Color(0xFF121212), shape: BoxShape.circle),
-                      child: const Icon(Icons.cloud_upload_outlined, size: 40, color: Color(0xFFCDE48A)),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text("Capture or Upload Evidence", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF121212))),
-                    const SizedBox(height: 8),
-                    const Text("Photos or videos of illegal ads, social media listings, chat logs, or physical poaching activity.", textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF2D3B1E), fontWeight: FontWeight.w500, height: 1.4)),
-                  ],
-                ),
+                child: Column(children: [
+                  Container(padding: const EdgeInsets.all(20), decoration: const BoxDecoration(color: Color(0xFF121212), shape: BoxShape.circle), child: const Icon(Icons.cloud_upload_outlined, size: 40, color: Color(0xFFCDE48A))),
+                  const SizedBox(height: 24),
+                  const Text("Capture or Upload Evidence", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF121212))),
+                  const SizedBox(height: 8),
+                  const Text("Photos or videos of illegal ads, social media listings, chat logs, or physical poaching activity.", textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF2D3B1E), fontWeight: FontWeight.w500, height: 1.4)),
+                ]),
               ),
             ),
             const SizedBox(height: 25),
-            Row(
-              children: [
-                Expanded(child: _infoCard("Anonymous Reporting", "Your identity is encrypted and hidden.", Icons.security_rounded)),
-                const SizedBox(width: 15),
-                Expanded(child: _infoCard("Immutable Proof", "Metadata is preserved for authorities.", Icons.verified_user_rounded)),
-              ],
-            ),
+            Row(children: [
+              Expanded(child: _infoCard("Anonymous Reporting", "Your identity is encrypted and hidden.", Icons.security_rounded)),
+              const SizedBox(width: 15),
+              Expanded(child: _infoCard("Immutable Proof", "Metadata is preserved for authorities.", Icons.verified_user_rounded)),
+            ]),
             const SizedBox(height: 120),
           ],
         ),
@@ -503,82 +465,76 @@ class CameraScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20), height: 160,
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: const Color(0xFFAEDB4F), size: 30),
-          const Spacer(),
-          Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 4),
-          Text(sub, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-        ],
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, color: const Color(0xFFAEDB4F), size: 30),
+        const Spacer(),
+        Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 4),
+        Text(sub, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+      ]),
     );
   }
 }
 
-// --- SCREEN 2: DATA VERIFICATION ---
 class DetailsScreen extends StatelessWidget {
   final XFile? image;
-  final String discoveryType, selectedWildlife, otherWildlife, selectedPlatform, otherPlatform, onlineLink, reportTime, displayLocation;
+  final String discoveryType,
+      selectedWildlife,
+      otherWildlife,
+      selectedPlatform,
+      otherPlatform,
+      onlineLink,
+      reportTime,
+      displayLocation;
   final TextEditingController manualLocationController;
-  final ValueChanged<String> onDiscoveryTypeChanged, onLinkChanged, onOtherWildlifeChanged, onOtherPlatformChanged;
+  final ValueChanged<String> onDiscoveryTypeChanged,
+      onLinkChanged,
+      onOtherWildlifeChanged,
+      onOtherPlatformChanged;
   final ValueChanged<String?> onWildlifeChanged, onPlatformChanged;
   final VoidCallback onBack, onRefreshLocation;
 
   const DetailsScreen({
-    super.key, 
-    required this.image, 
+    super.key,
+    required this.image,
     required this.discoveryType,
-    required this.selectedWildlife, 
-    required this.otherWildlife, 
-    required this.selectedPlatform, 
-    required this.otherPlatform, 
+    required this.selectedWildlife,
+    required this.otherWildlife,
+    required this.selectedPlatform,
+    required this.otherPlatform,
     required this.onlineLink,
-    required this.reportTime, 
-    required this.displayLocation, 
+    required this.reportTime,
+    required this.displayLocation,
     required this.manualLocationController,
     required this.onDiscoveryTypeChanged,
-    required this.onWildlifeChanged, 
-    required this.onOtherWildlifeChanged, 
-    required this.onPlatformChanged, 
-    required this.onOtherPlatformChanged, 
+    required this.onWildlifeChanged,
+    required this.onOtherWildlifeChanged,
+    required this.onPlatformChanged,
+    required this.onOtherPlatformChanged,
     required this.onLinkChanged,
-    required this.onBack, 
-    required this.onRefreshLocation
+    required this.onBack,
+    required this.onRefreshLocation,
   });
 
-  bool _isVideo(String path) {
-    final lowercasePath = path.toLowerCase();
-    return lowercasePath.endsWith('.mp4') || lowercasePath.endsWith('.mov') || lowercasePath.endsWith('.avi');
-  }
+  bool _isVideo(String path) =>
+      path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.mov');
 
-  void _showImagePreview(BuildContext context) {
-    if (image == null || _isVideo(image!.path)) return;
+  void _showFullScreenPreview(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => Dialog.fullscreen(
+      builder: (context) => Dialog(
         backgroundColor: Colors.black,
-        child: Stack(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Center(
-              child: InteractiveViewer(
-                minScale: 0.5,
-                maxScale: 4.0,
-                child: kIsWeb ? Image.network(image!.path) : Image.file(File(image!.path)),
-              ),
-            ),
-            Positioned(
-              top: 40, 
-              right: 20, 
-              child: CircleAvatar(
-                backgroundColor: Colors.white24,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ),
-            ),
+            image == null
+                ? const Icon(Icons.broken_image)
+                : (kIsWeb
+                    ? Image.network(image!.path)
+                    : Image.file(File(image!.path))),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("CLOSE", style: TextStyle(color: Colors.white)))
           ],
         ),
       ),
@@ -587,213 +543,269 @@ class DetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+    return Column(children: [
+      // 顶部导航栏
+      Padding(
+          padding: const EdgeInsets.all(10),
           child: Row(children: [
-            IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: onBack),
-            const Expanded(child: Center(child: Text("Verify Report Details", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)))),
+            IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                onPressed: onBack),
+            const Expanded(
+                child: Center(
+                    child: Text("Verify Report Details",
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w900)))),
             const SizedBox(width: 48)
-          ]),
-        ),
-        
-        // Media Preview with Zoom Capability
-        GestureDetector(
-          onTap: () => _showImagePreview(context),
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20),
-            height: 180, width: double.infinity,
-            decoration: BoxDecoration(color: const Color(0xFF121212), borderRadius: BorderRadius.circular(30)),
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(30),
-                  child: SizedBox.expand(
-                    child: image == null 
-                      ? const Center(child: Icon(Icons.image, color: Colors.grey))
-                      : _isVideo(image!.path)
-                        ? const Center(child: Icon(Icons.play_circle_fill, color: Color(0xFFCDE48A), size: 50))
-                        : (kIsWeb ? Image.network(image!.path, fit: BoxFit.cover) : Image.file(File(image!.path), fit: BoxFit.cover)),
+          ])),
+
+      Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        height: 180,
+        width: double.infinity,
+        decoration: BoxDecoration(
+            color: const Color(0xFF121212),
+            borderRadius: BorderRadius.circular(30)),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: image == null
+                  ? const Center(child: Icon(Icons.image, color: Colors.grey))
+                  : _isVideo(image!.path)
+                      ? const Center(
+                          child: Icon(Icons.play_circle_fill,
+                              color: Color(0xFFCDE48A), size: 50))
+                      : SizedBox.expand(
+                          child: kIsWeb
+                              ? Image.network(image!.path, fit: BoxFit.cover)
+                              : Image.file(File(image!.path),
+                                  fit: BoxFit.cover)),
+            ),
+            if (image != null)
+              Center(
+                child: GestureDetector(
+                  onTap: () => _showFullScreenPreview(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(color: Colors.white24)),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.visibility_rounded,
+                          color: Colors.white, size: 18),
+                      SizedBox(width: 8),
+                      Text("PREVIEW",
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12)),
+                    ]),
                   ),
                 ),
-                if (image != null && !_isVideo(image!.path))
-                  Positioned(
-                    bottom: 12, 
-                    right: 12, 
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
-                      child: const Icon(Icons.zoom_in_rounded, color: Colors.white, size: 20),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+              ),
+          ],
         ),
+      ),
 
-        const SizedBox(height: 20),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _label("WHERE DID YOU DISCOVER THIS?"),
-                _buildDiscoveryToggle(),
-                
-                const SizedBox(height: 20),
+      const SizedBox(height: 20),
 
-                _label("WILDLIFE TYPE"),
-                _flatDropdown(["Pangolin", "Sun Bear", "Ivory", "Exotic Bird", "Malayan Tiger", "Others (Please specify)"], selectedWildlife, onWildlifeChanged),
-                if (selectedWildlife == "Others (Please specify)") ...[
-                  const SizedBox(height: 10),
-                  TextField(onChanged: onOtherWildlifeChanged, decoration: _inputDeco("Enter wildlife name...")),
-                ],
-
-                const SizedBox(height: 20),
-
-                // --- CONDITIONAL UI: ONLINE ---
-                if (discoveryType == "Online") ...[
-                  _label("PLATFORM DETECTED ON"),
-                  _flatDropdown(["Facebook Marketplace", "Instagram", "Telegram Channel", "WhatsApp Groups", "TikTok", "YouTube", "Mudah.my", "Shopee", "Lazada", "Others (Please specify)"], selectedPlatform, onPlatformChanged),
-                  if (selectedPlatform == "Others (Please specify)") ...[
-                    const SizedBox(height: 10),
-                    TextField(onChanged: onOtherPlatformChanged, decoration: _inputDeco("Specify platform...")),
-                  ],
-                  const SizedBox(height: 20),
-                  _label("LINK TO LISTING / PROFILE"),
-                  TextField(onChanged: onLinkChanged, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold), decoration: _inputDeco("Paste URL here...")),
-                ],
-
-                // --- CONDITIONAL UI: PHYSICAL ---
-                if (discoveryType == "Physical") ...[
-                  _label("PHYSICAL LOCATION"),
-                  _buildPhysicalLocationSection(),
-                ],
-
-                const SizedBox(height: 20),
-                _label("REPORT TIMESTAMP"),
-                _staticField(Icons.access_time_filled, reportTime, "Auto-captured (Immutable)"),
-                
-                const SizedBox(height: 30),
-                _metaBox(),
-                const SizedBox(height: 120),
+      Expanded(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _label("WHERE DID YOU DISCOVER THIS?"),
+            _buildDiscoveryToggle(),
+            const SizedBox(height: 20),
+            _label("WILDLIFE TYPE"),
+            _flatDropdown([
+              "Pangolin",
+              "Sun Bear",
+              "Ivory",
+              "Exotic Bird",
+              "Malayan Tiger",
+              "Others (Please specify)"
+            ], selectedWildlife, onWildlifeChanged),
+            if (selectedWildlife == "Others (Please specify)") ...[
+              const SizedBox(height: 10),
+              TextField(
+                  onChanged: onOtherWildlifeChanged,
+                  decoration: _inputDeco("Enter wildlife name...")),
+            ],
+            const SizedBox(height: 20),
+            if (discoveryType == "Online") ...[
+              _label("PLATFORM DETECTED ON"),
+              _flatDropdown([
+                "Facebook Marketplace",
+                "Instagram",
+                "Telegram Channel",
+                "WhatsApp Groups",
+                "TikTok",
+                "YouTube",
+                "Mudah.my",
+                "Shopee",
+                "Lazada",
+                "Others (Please specify)"
+              ], selectedPlatform, onPlatformChanged),
+              if (selectedPlatform == "Others (Please specify)") ...[
+                const SizedBox(height: 10),
+                TextField(
+                    onChanged: onOtherPlatformChanged,
+                    decoration: _inputDeco("Specify platform...")),
               ],
-            ),
-          ),
+              const SizedBox(height: 20),
+              _label("LINK TO LISTING / PROFILE"),
+              TextField(
+                  onChanged: onLinkChanged,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  decoration: _inputDeco("Paste URL here...")),
+            ] else ...[
+              _label("PHYSICAL LOCATION"),
+              _buildPhysicalLocationSection(),
+            ],
+            const SizedBox(height: 20),
+            _label("REPORT TIMESTAMP"),
+            _staticField(Icons.access_time_filled, reportTime),
+            const SizedBox(height: 20),
+            _metaBox(),
+            const SizedBox(height: 120),
+          ]),
         ),
-      ],
-    );
+      ),
+    ]);
   }
 
-
-  Widget _buildDiscoveryToggle() {
-    return Row(
-      children: [
+  Widget _buildDiscoveryToggle() => Row(children: [
         _toggleBtn("Online", Icons.language, discoveryType == "Online"),
         const SizedBox(width: 10),
         _toggleBtn("Physical", Icons.location_on, discoveryType == "Physical"),
-      ],
-    );
-  }
+      ]);
 
-  Widget _toggleBtn(String type, IconData icon, bool isSelected) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onDiscoveryTypeChanged(type),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF121212) : Colors.white,
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: isSelected ? Colors.transparent : Colors.black12),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 18, color: isSelected ? Colors.white : Colors.grey),
+  Widget _toggleBtn(String type, IconData icon, bool isSelected) => Expanded(
+        child: GestureDetector(
+          onTap: () => onDiscoveryTypeChanged(type),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFF121212) : Colors.white,
+                borderRadius: BorderRadius.circular(15)),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icon,
+                  size: 18, color: isSelected ? Colors.white : Colors.grey),
               const SizedBox(width: 8),
-              Text(type, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontWeight: FontWeight.bold)),
-            ],
+              Text(type,
+                  style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.grey,
+                      fontWeight: FontWeight.bold)),
+            ]),
           ),
         ),
-      ),
-    );
-  }
+      );
 
-  Widget _buildPhysicalLocationSection() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFFCDE48A), borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        children: [
+  Widget _buildPhysicalLocationSection() => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+            color: const Color(0xFFCDE48A),
+            borderRadius: BorderRadius.circular(20)),
+        child: Column(children: [
           Row(children: [
             const Icon(Icons.gps_fixed, size: 18),
             const SizedBox(width: 10),
-            const Expanded(child: Text("Live Location Data", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
-            IconButton(onPressed: onRefreshLocation, icon: const Icon(Icons.refresh, size: 20))
+            const Expanded(
+                child: Text("Live Location Data",
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+            IconButton(
+                onPressed: onRefreshLocation,
+                icon: const Icon(Icons.refresh, size: 20))
           ]),
           const Divider(color: Colors.black12),
           TextField(
-            controller: manualLocationController,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
-            decoration: const InputDecoration(
-              hintText: "Enter/Edit address manually... (State)",
-              border: InputBorder.none,
-              icon: Icon(Icons.edit, size: 16),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+              controller: manualLocationController,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+              decoration: const InputDecoration(
+                  hintText: "Edit / Enter address manually...",
+                  border: InputBorder.none,
+                  icon: Icon(Icons.edit, size: 16))),
+        ]),
+      );
 
-  Widget _label(String t) => Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Text(t, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.blueGrey)));
-  
-  Widget _flatDropdown(List<String> items, String val, ValueChanged<String?> onChange) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-    child: DropdownButton<String>(
-      value: items.contains(val) ? val : items.first, isExpanded: true, underline: const SizedBox(),
-      items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)))).toList(),
-      onChanged: onChange,
-    ),
-  );
+  Widget _label(String t) => Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(t,
+          style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 11,
+              color: Colors.blueGrey)));
 
-  InputDecoration _inputDeco(String h) => InputDecoration(
-        hintText: h,
-        hintStyle: const TextStyle(
-          fontSize: 14, 
-          fontWeight: FontWeight.bold, 
-          color: Colors.grey
-        ),
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide.none,
+  Widget _flatDropdown(
+          List<String> items, String val, ValueChanged<String?> onChange) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+            color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        child: DropdownButton<String>(
+          value: items.contains(val) ? val : items.first,
+          isExpanded: true,
+          underline: const SizedBox(),
+          items: items
+              .map((e) => DropdownMenuItem(
+                  value: e,
+                  child: Text(e,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 14))))
+              .toList(),
+          onChanged: onChange,
         ),
       );
-  
-  Widget _staticField(IconData i, String v, String s) => Container(
-    padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-    child: Row(children: [Icon(i, size: 20, color: Colors.grey), const SizedBox(width: 12), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(v, style: const TextStyle(fontWeight: FontWeight.bold)), Text(s, style: const TextStyle(fontSize: 10, color: Colors.grey))])]),
-  );
+
+  InputDecoration _inputDeco(String h) => InputDecoration(
+      hintText: h,
+      hintStyle: const TextStyle(
+          fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none));
+
+  Widget _staticField(IconData i, String v) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+            color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        child: Row(children: [
+          Icon(i, size: 20, color: Colors.grey),
+          const SizedBox(width: 12),
+          Text(v, style: const TextStyle(fontWeight: FontWeight.bold))
+        ]),
+      );
 
   Widget _metaBox() => Container(
-    padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: const Color(0xFF121212), borderRadius: BorderRadius.circular(25)),
-    child: Row(children: [
-      const Icon(Icons.assignment_turned_in_rounded, color: Color(0xFFCDE48A)),
-      const SizedBox(width: 15),
-      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text("Metadata Automatically Preserved", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12)),
-        Text("Media EXIF and GPS are securely encrypted.", style: TextStyle(color: Colors.white60, fontSize: 11))
-      ])),
-    ]),
-  );
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+            color: const Color(0xFF121212),
+            borderRadius: BorderRadius.circular(25)),
+        child: const Row(children: [
+          Icon(Icons.assignment_turned_in_rounded, color: Color(0xFFCDE48A)),
+          SizedBox(width: 15),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text("Metadata Automatically Preserved",
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12)),
+                Text("Media EXIF and GPS are securely encrypted.",
+                    style: TextStyle(color: Colors.white60, fontSize: 11))
+              ])),
+        ]),
+      );
 }
-// --- SCREEN 3: SUBMISSION SUCCESS ---
+
 class SuccessScreen extends StatelessWidget {
   final VoidCallback onReset;
   final String caseId;
