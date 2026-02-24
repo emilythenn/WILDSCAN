@@ -37,6 +37,7 @@ const App: React.FC = () => {
   const hasLoadedCasesRef = useRef(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [firestoreStatus, setFirestoreStatus] = useState<"connecting" | "connected" | "error" | "offline">("connecting");
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
   const [evidenceByCase, setEvidenceByCase] = useState<Record<string, EvidenceItem[]>>({});
@@ -45,6 +46,8 @@ const App: React.FC = () => {
   const [resolvedLocationsById, setResolvedLocationsById] = useState<Record<string, string>>({});
   const [caseUpdateEvents, setCaseUpdateEvents] = useState<{ id: string; data: any }[]>([]);
   const resolvingLocationRef = useRef<Set<string>>(new Set());
+  const previousUnreadCountRef = useRef(0);
+  const unreadCountInitializedRef = useRef(false);
 
 
   const normalizePriority = (value?: string): Detection["priority"] => {
@@ -244,6 +247,15 @@ const App: React.FC = () => {
       status,
       evidence_hash: primaryEvidence?.hash || "",
       trust_score: trustScore,
+      discovery_type:
+        data.discoveryType
+        || data.discoverType
+        || data.discovery_type
+        || data.discover_type
+        || data.discovery_type_name
+        || data.discoveryTypeName
+        || data?.discovery?.type
+        || "",
       evidence_images: evidenceItems,
     };
   };
@@ -339,6 +351,7 @@ const App: React.FC = () => {
         const caseId = data.caseId as string | undefined;
         const fileUrl = data.fileUrl as string | undefined;
         const platformSource = data.platformSource as string | undefined;
+        const onlineLink = (data.onlineLink || data.online_link) as string | undefined;
         const aiSummary = data.aiSummary as string | undefined;
         const hash = data.hash as string | undefined;
         if (!caseId || !fileUrl) return;
@@ -353,6 +366,7 @@ const App: React.FC = () => {
           caseId,
           fileUrl,
           platformSource,
+          onlineLink,
           aiSummary,
           hash,
           uploadedAt,
@@ -646,6 +660,55 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const playUnreadNotificationAlert = useCallback((count: number) => {
+    if (typeof window === "undefined") return;
+    if (count <= 0) return;
+
+    try {
+      const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextCtor) {
+        const context = new AudioContextCtor();
+        const now = context.currentTime;
+        const playBeep = (startAt: number, frequency: number) => {
+          const oscillator = context.createOscillator();
+          const gainNode = context.createGain();
+          oscillator.type = "sine";
+          oscillator.frequency.value = frequency;
+          gainNode.gain.setValueAtTime(0, startAt);
+          gainNode.gain.linearRampToValueAtTime(0.08, startAt + 0.01);
+          gainNode.gain.linearRampToValueAtTime(0, startAt + 0.18);
+          oscillator.connect(gainNode);
+          gainNode.connect(context.destination);
+          oscillator.start(startAt);
+          oscillator.stop(startAt + 0.2);
+        };
+
+        playBeep(now, 880);
+        playBeep(now + 0.24, 988);
+        setTimeout(() => {
+          context.close().catch(() => undefined);
+        }, 700);
+      }
+    } catch (error) {
+      console.warn("Unable to play notification beep:", error);
+    }
+
+    if ("speechSynthesis" in window) {
+      const message = count === 1
+        ? "You have 1 unread notification"
+        : `You have ${count} unread notifications`;
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(message);
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        window.speechSynthesis.speak(utterance);
+      } catch (error) {
+        console.warn("Unable to speak unread notification count:", error);
+      }
+    }
+  }, []);
+
   const markCasesRead = useCallback((caseIds: string[]) => {
     if (!db || caseIds.length === 0) return;
     const batch = writeBatch(db);
@@ -673,7 +736,8 @@ const App: React.FC = () => {
     if (target) {
       setSelectedDetection(target);
     }
-  }, [detections]);
+    markCasesRead([caseId]);
+  }, [detections, markCasesRead]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -813,11 +877,31 @@ const App: React.FC = () => {
   useEffect(() => {
     if (detections.length === 0) {
       setHasUnreadNotifications(false);
+      setUnreadNotificationsCount(0);
+      previousUnreadCountRef.current = 0;
+      unreadCountInitializedRef.current = true;
       return;
     }
-    const hasUnread = detections.some((d) => !readStateByCase[d.id]);
+    const unreadCount = detections.reduce((count, d) => {
+      return readStateByCase[d.id] ? count : count + 1;
+    }, 0);
+    const hasUnread = unreadCount > 0;
+
+    setUnreadNotificationsCount(unreadCount);
     setHasUnreadNotifications(hasUnread);
-  }, [detections, readStateByCase]);
+
+    if (!unreadCountInitializedRef.current) {
+      previousUnreadCountRef.current = unreadCount;
+      unreadCountInitializedRef.current = true;
+      return;
+    }
+
+    if (!isNotificationsOpen && unreadCount > previousUnreadCountRef.current) {
+      playUnreadNotificationAlert(unreadCount);
+    }
+
+    previousUnreadCountRef.current = unreadCount;
+  }, [detections, isNotificationsOpen, playUnreadNotificationAlert, readStateByCase]);
 
   // Sync selection when list changes
   useEffect(() => {
@@ -908,10 +992,12 @@ const App: React.FC = () => {
 
   const handleSelectDetection = useCallback((detection: Detection) => {
     setSelectedDetection(detection);
-  }, []);
+    markCasesRead([detection.id]);
+  }, [markCasesRead]);
 
   const handleMarkerClick = useCallback((detection: Detection) => {
     setSelectedDetection(detection);
+    markCasesRead([detection.id]);
     const statusOrder: Detection["status"][] = ["Pending", "Investigating", "Resolved"];
     const currentStatus = detection.status && statusOrder.includes(detection.status)
       ? detection.status
@@ -920,7 +1006,7 @@ const App: React.FC = () => {
     const nextIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
     const nextStatus = statusOrder[nextIndex % statusOrder.length];
     handleStatusChange(detection.id, nextStatus);
-  }, [handleStatusChange]);
+  }, [handleStatusChange, markCasesRead]);
 
   if (!isAuthenticated) {
     return (
@@ -972,6 +1058,7 @@ const App: React.FC = () => {
             notificationCases={notificationCases}
             isNotificationsOpen={isNotificationsOpen}
             hasUnreadNotifications={hasUnreadNotifications}
+            unreadNotificationsCount={unreadNotificationsCount}
             onToggleNotifications={handleToggleNotifications}
             onNotificationClick={handleNotificationClick}
             onLogout={handleLogout}

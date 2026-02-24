@@ -92,6 +92,11 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
   }, [detection]);
 
   const primaryEvidence = evidenceItems[0];
+  const onlineEvidenceLink = useMemo(() => {
+    const fromEvidence = evidenceItems.find((item) => typeof item.onlineLink === "string" && item.onlineLink.trim().length > 0)?.onlineLink;
+    return fromEvidence?.trim() || "";
+  }, [evidenceItems]);
+  const isOnlineDiscovery = (detection?.discovery_type || "").toString().trim().toLowerCase().includes("online");
 
   const evidenceHashIndex = useMemo(() => {
     const index = new Map<string, Set<string>>();
@@ -2425,6 +2430,17 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
                <Share2 size={16} className="text-green-800" />
                <span className="text-sm font-semibold truncate text-green-950">{detection.platform_source || detection.source}</span>
             </div>
+            {isOnlineDiscovery && onlineEvidenceLink && (
+              <a
+                href={onlineEvidenceLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-[11px] text-lime-700 hover:text-lime-800 underline break-all"
+              >
+                <LinkIcon size={12} />
+                {onlineEvidenceLink}
+              </a>
+            )}
           </div>
           <button
             type="button"

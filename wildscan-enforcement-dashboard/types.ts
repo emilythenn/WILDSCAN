@@ -4,6 +4,7 @@ export interface EvidenceItem {
   caseId: string;
   fileUrl: string;
   platformSource?: string;
+  onlineLink?: string;
   aiSummary?: string;
   hash?: string;
   uploadedAt?: string;
@@ -38,6 +39,7 @@ export interface Detection {
   status?: 'Pending' | 'Investigating' | 'Resolved';
   evidence_hash?: string;
   trust_score?: number;
+  discovery_type?: string;
   evidence_images?: EvidenceItem[];
 }
 

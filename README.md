@@ -198,6 +198,58 @@ For comprehensive feature list, setup instructions, troubleshooting, and API con
 └─────────────────────────────────────────┘
 ```
 
+## 🛠️ Technical Implementation Overview
+
+### 1) Technologies Used
+
+- **Frontend:** React 18 + TypeScript, component-based UI, typed domain models
+- **Build & Tooling:** Vite for fast local development and optimized production builds
+- **Styling:** Tailwind CSS utility-driven design for rapid, consistent UI delivery
+- **Data Layer:** Firebase Firestore for real-time case/event streaming
+- **AI Layer:** Google Gemini 1.5 Flash for risk, legality, and duplicate-context reasoning
+- **Geo Layer:** Google Maps JavaScript API for incident visualization and patrol navigation context
+- **Integrity Layer:** Web Crypto API (SHA-256) for tamper-evident evidence fingerprints
+
+### 2) Google Tools Integrated
+
+- **Firebase Firestore:** Live case synchronization, notification state, and case status persistence
+- **Google Gemini API:** Context-aware case interpretation, recommended actions, and explanation modals
+- **Google Maps API:** Marker-based map intelligence, map-centric case review, and location-driven triage
+
+These tools were selected to combine real-time operational response, AI-assisted investigation, and spatial decision support in one enforcement workflow.
+
+### 3) Implementation Approach
+
+- **Real-time operations:** Firestore listeners keep dashboard state continuously updated without manual refresh.
+- **Case intelligence pipeline:** Each case combines source metadata, confidence signals, trust score factors, and Gemini-generated insights.
+- **Evidence integrity workflow:** SHA-256 hash generation is auto-triggered when missing; hashes are persisted and compared to detect cross-case reuse.
+- **Investigation UX:** Alert feed, filters, map, and case details panels are linked to reduce context-switching and speed officer response.
+- **Resilience design:** Fallback logic is used when AI services are unavailable, preserving core dashboard functionality during degraded conditions.
+
+### 4) Innovation Highlights
+
+- **Cryptographic chain-of-custody in a live dashboard:** Evidence hashing and duplicate detection are embedded directly in daily investigation workflows.
+- **AI explainability for enforcement decisions:** Gemini outputs are surfaced with human-readable rationale rather than opaque scores only.
+- **Trust score + similarity context:** Cases are not only scored, but linked to matching historical patterns to support prioritization.
+- **Field-first accessibility:** Speech feedback and voice search support hands-free and inclusive operation for officers in active environments.
+
+### 5) Challenges Faced (and How They Were Addressed)
+
+- **Challenge: Reliable real-time updates at UI level**  
+  **Response:** Structured Firestore subscription patterns and deterministic sorting to avoid stale or out-of-order case views.
+
+- **Challenge: Duplicate evidence accuracy across heterogeneous uploads**  
+  **Response:** Standardized SHA-256 fingerprinting and centralized evidence hash storage for deterministic comparisons.
+
+- **Challenge: AI availability and response variability**  
+  **Response:** Offline fallback analysis paths and guarded UI rendering to keep workflows stable when API calls fail.
+
+- **Challenge: Secure handling of operational credentials**  
+  **Response:** Environment-variable based key management, restricted access patterns, and secure API communication practices.
+
+- **Challenge: Balancing rich functionality with fast field usage**  
+  **Response:** Action-oriented interface design (quick filters, one-click ranger messaging, concise status strip) to reduce operator friction.
+
 ## 🔒 Security
 
 - Authentication via email + access key

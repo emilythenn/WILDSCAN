@@ -17,6 +17,7 @@ interface HeaderProps {
   }[];
   isNotificationsOpen: boolean;
   hasUnreadNotifications: boolean;
+  unreadNotificationsCount: number;
   onToggleNotifications: () => void;
   onNotificationClick: (caseId: string) => void;
   onLogout: () => void;
@@ -29,6 +30,7 @@ const Header: React.FC<HeaderProps> = ({
   notificationCases,
   isNotificationsOpen,
   hasUnreadNotifications,
+  unreadNotificationsCount,
   onToggleNotifications,
   onNotificationClick,
   onLogout,
@@ -153,7 +155,9 @@ const Header: React.FC<HeaderProps> = ({
           >
             <Bell className="text-green-800 group-hover:text-lime-700 transition-colors" size={20} />
             {hasUnreadNotifications && (
-              <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-lime-300"></span>
+              <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 bg-red-500 rounded-full border-2 border-lime-300 text-[9px] leading-[14px] text-white font-bold text-center">
+                {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+              </span>
             )}
           </button>
 
