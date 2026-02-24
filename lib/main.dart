@@ -411,7 +411,6 @@ bool _canSubmit() {
         onLinkChanged: (val) => setState(() => onlineLink = val),
         onBack: () => setState(() => _currentIndex = 0),
         onRefreshLocation: _updateLocation,
-        onSubmit: _handleSubmission,
       ),
       SuccessScreen(onReset: _resetApp, caseId: currentGeneratedId),
     ];
@@ -423,39 +422,47 @@ bool _canSubmit() {
           if (_isLoading) Container(color: Colors.black45, child: const Center(child: CircularProgressIndicator(color: Colors.white))),
         ],
       ),
-      floatingActionButton: _currentIndex < 2
+floatingActionButton: _currentIndex < 2
     ? Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: SizedBox(
-          width: double.infinity,
-          height: 65,
+          width: double.infinity, height: 65,
           child: FloatingActionButton.extended(
             elevation: 0,
             onPressed: () {
               if (_currentIndex == 0) {
                 _showPickerOptions(context);
               } else {
-                if (_canSubmit()) {
-                  _handleSubmission();
-                } else {
+                if (discoveryType == "Online" && onlineLink.trim().isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text("Please fill in all required fields (URL/Location)"),
+                      content: Text("Please provide the Online Link/URL"),
                       backgroundColor: Colors.redAccent,
                     ),
                   );
+                  return;
                 }
+                
+                if (discoveryType == "Physical" && _manualLocationController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Please provide a physical address"),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                  return; 
+                }
+                _handleSubmission();
               }
             },
-
-            backgroundColor: (_currentIndex == 1 && !_canSubmit()) 
-                ? Colors.grey 
+            backgroundColor: (_currentIndex == 1 && discoveryType == "Online" && onlineLink.trim().isEmpty)
+                ? Colors.grey.shade700
                 : const Color(0xFF121212),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
             label: Row(children: [
               Text(
-                _currentIndex == 0 ? "Next: Verify Details" : "Submit Report",
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                _currentIndex == 0 ? "Next: Verify Details" : "Submit Report", 
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
               ),
               const SizedBox(width: 8),
               const Icon(Icons.arrow_forward_rounded, color: Colors.white)
@@ -589,6 +596,7 @@ class CameraScreen extends StatelessWidget {
   }
 }
 
+
 class DetailsScreen extends StatelessWidget {
   final XFile? image;
   final String discoveryType,
@@ -605,7 +613,7 @@ class DetailsScreen extends StatelessWidget {
       onOtherWildlifeChanged,
       onOtherPlatformChanged;
   final ValueChanged<String?> onWildlifeChanged, onPlatformChanged;
-  final VoidCallback onBack, onRefreshLocation, onSubmit;
+  final VoidCallback onBack, onRefreshLocation;
 
   const DetailsScreen({
     super.key,
@@ -627,42 +635,13 @@ class DetailsScreen extends StatelessWidget {
     required this.onLinkChanged,
     required this.onBack,
     required this.onRefreshLocation,
-    required this.onSubmit,
+    // Note: onSubmit is removed here because the FloatingActionButton in Parent handles it
   });
-
-  // --- STRICT VALIDATION LOGIC ---
-  bool get _isFormValid {
-    // 1. Media Check
-    if (image == null) return false;
-
-    // 2. Wildlife Check
-    if (selectedWildlife == "Others (Please specify)" && otherWildlife.trim().isEmpty) {
-      return false;
-    }
-
-    // 3. Discovery Type Specific Check
-    if (discoveryType == "Online") {
-      // FORCE URL: Must not be empty and must be at least 8 characters (e.g., http://a.c)
-      if (onlineLink.trim().isEmpty || onlineLink.trim().length < 8) {
-        return false;
-      }
-      // If "Others" platform is selected, it must have a name
-      if (selectedPlatform == "Others (Please specify)" && otherPlatform.trim().isEmpty) {
-        return false;
-      }
-    } else {
-      // Physical Location: Manual address field must not be empty
-      if (manualLocationController.text.trim().isEmpty) {
-        return false;
-      }
-    }
-
-    return true; 
-  }
 
   bool _isVideo(String path) =>
       path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.mov');
 
+  // Show a simple full-screen dialog to preview the captured media
   void _showFullScreenPreview(BuildContext context) {
     showDialog(
       context: context,
@@ -685,7 +664,7 @@ class DetailsScreen extends StatelessWidget {
               ),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("DONE", style: TextStyle(color: Colors.white)),
+              child: const Text("CLOSE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -696,7 +675,7 @@ class DetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-      // Header
+      // Custom Top App Bar
       Padding(
           padding: const EdgeInsets.all(10),
           child: Row(children: [
@@ -707,10 +686,10 @@ class DetailsScreen extends StatelessWidget {
                 child: Center(
                     child: Text("Verify Report Details",
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)))),
-            const SizedBox(width: 48)
+            const SizedBox(width: 48) // Balancing space
           ])),
 
-      // Image Preview Card
+      // Media Preview Section
       Container(
         margin: const EdgeInsets.symmetric(horizontal: 20),
         height: 180,
@@ -755,7 +734,7 @@ class DetailsScreen extends StatelessWidget {
 
       const SizedBox(height: 20),
 
-      // Form
+      // Scrollable Form Fields
       Expanded(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -778,6 +757,7 @@ class DetailsScreen extends StatelessWidget {
 
             const SizedBox(height: 20),
             
+            // Conditional UI: Online Listing vs Physical Poaching
             if (discoveryType == "Online") ...[
               _label("PLATFORM DETECTED ON"),
               _flatDropdown([
@@ -791,13 +771,13 @@ class DetailsScreen extends StatelessWidget {
                     decoration: _inputDeco("Specify platform...")),
               ],
               const SizedBox(height: 20),
-              _label("LINK TO LISTING / PROFILE *"), // Added asterisk for visual cue
+              _label("LINK TO LISTING / PROFILE (REQUIRED)"),
               TextField(
                   onChanged: onLinkChanged,
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                   decoration: _inputDeco("Paste URL here...")),
             ] else ...[
-              _label("PHYSICAL LOCATION *"),
+              _label("PHYSICAL LOCATION (REQUIRED)"),
               _buildPhysicalLocationSection(),
             ],
 
@@ -808,42 +788,14 @@ class DetailsScreen extends StatelessWidget {
             const SizedBox(height: 20),
             _metaBox(),
             
-            const SizedBox(height: 30),
-
-            // --- FINAL SUBMIT BUTTON ---
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                // Double protection: Button disables itself AND has a logic check
-                onPressed: _isFormValid 
-                  ? () => onSubmit() 
-                  : null, 
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFCDE48A),
-                  disabledBackgroundColor: Colors.grey.shade300,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  elevation: 0,
-                ),
-                child: Text(
-                  "SUBMIT REPORT",
-                  style: TextStyle(
-                    color: _isFormValid ? Colors.black : Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 50),
+            const SizedBox(height: 120), // Bottom padding for FloatingActionButton
           ]),
         ),
       ),
     ]);
   }
 
-  // Helper widgets (Toggle, Section, Dropdown, Label, Deco, StaticField, MetaBox)
-  // [Keep your existing helper methods below...]
+  // --- UI Components ---
 
   Widget _buildDiscoveryToggle() => Row(children: [
     _toggleBtn("Online", Icons.language, discoveryType == "Online"),
@@ -882,7 +834,11 @@ class DetailsScreen extends StatelessWidget {
       TextField(
           controller: manualLocationController,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
-          decoration: const InputDecoration(hintText: "Edit / Enter address manually...", border: InputBorder.none, icon: Icon(Icons.edit, size: 16))),
+          decoration: const InputDecoration(
+            hintText: "Edit / Enter address manually...", 
+            border: InputBorder.none, 
+            icon: Icon(Icons.edit, size: 16)
+          )),
     ]),
   );
 
