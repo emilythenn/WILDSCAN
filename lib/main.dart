@@ -9,6 +9,8 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:video_player/video_player.dart';
+
 
 /**
  * PROJECT: WILDSCAN MALAYSIA (2026 Hackathon)
@@ -37,6 +39,81 @@ class FirebaseOptionsManual {
     } else {
       throw UnsupportedError("Platform not supported.");
     }
+  }
+}
+
+class VideoPreviewer extends StatefulWidget {
+  final String videoPath;
+
+  const VideoPreviewer({super.key, required this.videoPath});
+
+  @override
+  State<VideoPreviewer> createState() => _VideoPreviewerState();
+}
+
+class _VideoPreviewerState extends State<VideoPreviewer> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoPath));
+    } else {
+      _controller = VideoPlayerController.file(File(widget.videoPath));
+    }
+
+    _controller.initialize().then((_) {
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _controller.setLooping(true); 
+          _controller.play();          
+          _controller.setVolume(0);     
+        });
+      }
+    }).catchError((error) {
+      debugPrint("Video initialization failed: $error");
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
+    }
+
+    return AspectRatio(
+      aspectRatio: _controller.value.aspectRatio,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          VideoPlayer(_controller),
+          VideoProgressIndicator(_controller, allowScrubbing: true),
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _controller.value.isPlaying ? _controller.pause() : _controller.play();
+              });
+            },
+            child: Icon(
+              _controller.value.isPlaying ? Icons.pause_circle_outline : Icons.play_circle_outline,
+              color: Colors.white.withOpacity(0.5),
+              size: 50,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -234,6 +311,20 @@ class _MainNavigationState extends State<MainNavigation> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Submission Error: $e"))); 
     }
   }
+bool _canSubmit() {
+  if (selectedImage == null) return false;
+
+  if (discoveryType == "Online") {
+    if (onlineLink.trim().length < 5) return false;
+    if (selectedPlatform == "Others (Please specify)" && otherPlatform.trim().isEmpty) return false;
+  } else {
+    if (_manualLocationController.text.trim().isEmpty) return false;
+  }
+  
+  if (selectedWildlife == "Others (Please specify)" && otherWildlife.trim().isEmpty) return false;
+
+  return true;
+}
 
   void _resetApp() {
     setState(() { 
@@ -320,6 +411,7 @@ class _MainNavigationState extends State<MainNavigation> {
         onLinkChanged: (val) => setState(() => onlineLink = val),
         onBack: () => setState(() => _currentIndex = 0),
         onRefreshLocation: _updateLocation,
+        onSubmit: _handleSubmission,
       ),
       SuccessScreen(onReset: _resetApp, caseId: currentGeneratedId),
     ];
@@ -332,25 +424,46 @@ class _MainNavigationState extends State<MainNavigation> {
         ],
       ),
       floatingActionButton: _currentIndex < 2
-          ? Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: SizedBox(
-                width: double.infinity, height: 65,
-                child: FloatingActionButton.extended(
-                  elevation: 0,
-                  onPressed: () => _currentIndex == 0 ? _showPickerOptions(context) : _handleSubmission(),
-                  backgroundColor: const Color(0xFF121212),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
-                  label: Row(children: [
-                    Text(_currentIndex == 0 ? "Next: Verify Details" : "Submit Report", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.arrow_forward_rounded, color: Colors.white)
-                  ]),
-                ),
+    ? Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: SizedBox(
+          width: double.infinity,
+          height: 65,
+          child: FloatingActionButton.extended(
+            elevation: 0,
+            onPressed: () {
+              if (_currentIndex == 0) {
+                _showPickerOptions(context);
+              } else {
+                if (_canSubmit()) {
+                  _handleSubmission();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Please fill in all required fields (URL/Location)"),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                }
+              }
+            },
+
+            backgroundColor: (_currentIndex == 1 && !_canSubmit()) 
+                ? Colors.grey 
+                : const Color(0xFF121212),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+            label: Row(children: [
+              Text(
+                _currentIndex == 0 ? "Next: Verify Details" : "Submit Report",
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
               ),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward_rounded, color: Colors.white)
+            ]),
+          ),
+        ),
+      )
+    : null,
     );
   }
 
@@ -492,7 +605,7 @@ class DetailsScreen extends StatelessWidget {
       onOtherWildlifeChanged,
       onOtherPlatformChanged;
   final ValueChanged<String?> onWildlifeChanged, onPlatformChanged;
-  final VoidCallback onBack, onRefreshLocation;
+  final VoidCallback onBack, onRefreshLocation, onSubmit;
 
   const DetailsScreen({
     super.key,
@@ -514,7 +627,38 @@ class DetailsScreen extends StatelessWidget {
     required this.onLinkChanged,
     required this.onBack,
     required this.onRefreshLocation,
+    required this.onSubmit,
   });
+
+  // --- STRICT VALIDATION LOGIC ---
+  bool get _isFormValid {
+    // 1. Media Check
+    if (image == null) return false;
+
+    // 2. Wildlife Check
+    if (selectedWildlife == "Others (Please specify)" && otherWildlife.trim().isEmpty) {
+      return false;
+    }
+
+    // 3. Discovery Type Specific Check
+    if (discoveryType == "Online") {
+      // FORCE URL: Must not be empty and must be at least 8 characters (e.g., http://a.c)
+      if (onlineLink.trim().isEmpty || onlineLink.trim().length < 8) {
+        return false;
+      }
+      // If "Others" platform is selected, it must have a name
+      if (selectedPlatform == "Others (Please specify)" && otherPlatform.trim().isEmpty) {
+        return false;
+      }
+    } else {
+      // Physical Location: Manual address field must not be empty
+      if (manualLocationController.text.trim().isEmpty) {
+        return false;
+      }
+    }
+
+    return true; 
+  }
 
   bool _isVideo(String path) =>
       path.toLowerCase().endsWith('.mp4') || path.toLowerCase().endsWith('.mov');
@@ -524,17 +668,25 @@ class DetailsScreen extends StatelessWidget {
       context: context,
       builder: (context) => Dialog(
         backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            image == null
-                ? const Icon(Icons.broken_image)
-                : (kIsWeb
-                    ? Image.network(image!.path)
-                    : Image.file(File(image!.path))),
+            if (image != null)
+              Flexible(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(15),
+                  child: _isVideo(image!.path)
+                      ? const Center(child: Text("Video Preview", style: TextStyle(color: Colors.white)))
+                      : (kIsWeb
+                          ? Image.network(image!.path)
+                          : Image.file(File(image!.path))),
+                ),
+              ),
             TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("CLOSE", style: TextStyle(color: Colors.white)))
+              onPressed: () => Navigator.pop(context),
+              child: const Text("DONE", style: TextStyle(color: Colors.white)),
+            ),
           ],
         ),
       ),
@@ -544,7 +696,7 @@ class DetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(children: [
-      // 顶部导航栏
+      // Header
       Padding(
           padding: const EdgeInsets.all(10),
           child: Row(children: [
@@ -554,11 +706,11 @@ class DetailsScreen extends StatelessWidget {
             const Expanded(
                 child: Center(
                     child: Text("Verify Report Details",
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w900)))),
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)))),
             const SizedBox(width: 48)
           ])),
 
+      // Image Preview Card
       Container(
         margin: const EdgeInsets.symmetric(horizontal: 20),
         height: 180,
@@ -573,35 +725,26 @@ class DetailsScreen extends StatelessWidget {
               child: image == null
                   ? const Center(child: Icon(Icons.image, color: Colors.grey))
                   : _isVideo(image!.path)
-                      ? const Center(
-                          child: Icon(Icons.play_circle_fill,
-                              color: Color(0xFFCDE48A), size: 50))
+                      ? const Center(child: Icon(Icons.play_circle_fill, color: Color(0xFFCDE48A), size: 50))
                       : SizedBox.expand(
                           child: kIsWeb
                               ? Image.network(image!.path, fit: BoxFit.cover)
-                              : Image.file(File(image!.path),
-                                  fit: BoxFit.cover)),
+                              : Image.file(File(image!.path), fit: BoxFit.cover)),
             ),
             if (image != null)
               Center(
                 child: GestureDetector(
                   onTap: () => _showFullScreenPreview(context),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     decoration: BoxDecoration(
                         color: Colors.black54,
                         borderRadius: BorderRadius.circular(100),
                         border: Border.all(color: Colors.white24)),
                     child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.visibility_rounded,
-                          color: Colors.white, size: 18),
+                      Icon(Icons.visibility_rounded, color: Colors.white, size: 18),
                       SizedBox(width: 8),
-                      Text("PREVIEW",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 12)),
+                      Text("PREVIEW", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12)),
                     ]),
                   ),
                 ),
@@ -612,42 +755,34 @@ class DetailsScreen extends StatelessWidget {
 
       const SizedBox(height: 20),
 
+      // Form
       Expanded(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             _label("WHERE DID YOU DISCOVER THIS?"),
             _buildDiscoveryToggle(),
+            
             const SizedBox(height: 20),
             _label("WILDLIFE TYPE"),
             _flatDropdown([
-              "Pangolin",
-              "Sun Bear",
-              "Ivory",
-              "Exotic Bird",
-              "Malayan Tiger",
-              "Others (Please specify)"
+              "Pangolin", "Sun Bear", "Ivory", "Exotic Bird", "Malayan Tiger", "Others (Please specify)"
             ], selectedWildlife, onWildlifeChanged),
+            
             if (selectedWildlife == "Others (Please specify)") ...[
               const SizedBox(height: 10),
               TextField(
                   onChanged: onOtherWildlifeChanged,
                   decoration: _inputDeco("Enter wildlife name...")),
             ],
+
             const SizedBox(height: 20),
+            
             if (discoveryType == "Online") ...[
               _label("PLATFORM DETECTED ON"),
               _flatDropdown([
-                "Facebook Marketplace",
-                "Instagram",
-                "Telegram Channel",
-                "WhatsApp Groups",
-                "TikTok",
-                "YouTube",
-                "Mudah.my",
-                "Shopee",
-                "Lazada",
-                "Others (Please specify)"
+                "Facebook Marketplace", "Instagram", "Telegram Channel", "WhatsApp Groups", 
+                "TikTok", "YouTube", "Mudah.my", "Shopee", "Lazada", "Others (Please specify)"
               ], selectedPlatform, onPlatformChanged),
               if (selectedPlatform == "Others (Please specify)") ...[
                 const SizedBox(height: 10),
@@ -656,125 +791,126 @@ class DetailsScreen extends StatelessWidget {
                     decoration: _inputDeco("Specify platform...")),
               ],
               const SizedBox(height: 20),
-              _label("LINK TO LISTING / PROFILE"),
+              _label("LINK TO LISTING / PROFILE *"), // Added asterisk for visual cue
               TextField(
                   onChanged: onLinkChanged,
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                   decoration: _inputDeco("Paste URL here...")),
             ] else ...[
-              _label("PHYSICAL LOCATION"),
+              _label("PHYSICAL LOCATION *"),
               _buildPhysicalLocationSection(),
             ],
+
             const SizedBox(height: 20),
             _label("REPORT TIMESTAMP"),
             _staticField(Icons.access_time_filled, reportTime),
+            
             const SizedBox(height: 20),
             _metaBox(),
-            const SizedBox(height: 120),
+            
+            const SizedBox(height: 30),
+
+            // --- FINAL SUBMIT BUTTON ---
+            SizedBox(
+              width: double.infinity,
+              height: 55,
+              child: ElevatedButton(
+                // Double protection: Button disables itself AND has a logic check
+                onPressed: _isFormValid 
+                  ? () => onSubmit() 
+                  : null, 
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFCDE48A),
+                  disabledBackgroundColor: Colors.grey.shade300,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  elevation: 0,
+                ),
+                child: Text(
+                  "SUBMIT REPORT",
+                  style: TextStyle(
+                    color: _isFormValid ? Colors.black : Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 50),
           ]),
         ),
       ),
     ]);
   }
 
+  // Helper widgets (Toggle, Section, Dropdown, Label, Deco, StaticField, MetaBox)
+  // [Keep your existing helper methods below...]
+
   Widget _buildDiscoveryToggle() => Row(children: [
-        _toggleBtn("Online", Icons.language, discoveryType == "Online"),
-        const SizedBox(width: 10),
-        _toggleBtn("Physical", Icons.location_on, discoveryType == "Physical"),
-      ]);
+    _toggleBtn("Online", Icons.language, discoveryType == "Online"),
+    const SizedBox(width: 10),
+    _toggleBtn("Physical", Icons.location_on, discoveryType == "Physical"),
+  ]);
 
   Widget _toggleBtn(String type, IconData icon, bool isSelected) => Expanded(
-        child: GestureDetector(
-          onTap: () => onDiscoveryTypeChanged(type),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFF121212) : Colors.white,
-                borderRadius: BorderRadius.circular(15)),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(icon,
-                  size: 18, color: isSelected ? Colors.white : Colors.grey),
-              const SizedBox(width: 8),
-              Text(type,
-                  style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.grey,
-                      fontWeight: FontWeight.bold)),
-            ]),
-          ),
-        ),
-      );
+    child: GestureDetector(
+      onTap: () => onDiscoveryTypeChanged(type),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF121212) : Colors.white,
+            borderRadius: BorderRadius.circular(15)),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, size: 18, color: isSelected ? Colors.white : Colors.grey),
+          const SizedBox(width: 8),
+          Text(type, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontWeight: FontWeight.bold)),
+        ]),
+      ),
+    ),
+  );
 
   Widget _buildPhysicalLocationSection() => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-            color: const Color(0xFFCDE48A),
-            borderRadius: BorderRadius.circular(20)),
-        child: Column(children: [
-          Row(children: [
-            const Icon(Icons.gps_fixed, size: 18),
-            const SizedBox(width: 10),
-            const Expanded(
-                child: Text("Live Location Data",
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
-            IconButton(
-                onPressed: onRefreshLocation,
-                icon: const Icon(Icons.refresh, size: 20))
-          ]),
-          const Divider(color: Colors.black12),
-          TextField(
-              controller: manualLocationController,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
-              decoration: const InputDecoration(
-                  hintText: "Edit / Enter address manually...",
-                  border: InputBorder.none,
-                  icon: Icon(Icons.edit, size: 16))),
-        ]),
-      );
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(color: const Color(0xFFCDE48A), borderRadius: BorderRadius.circular(20)),
+    child: Column(children: [
+      Row(children: [
+        const Icon(Icons.gps_fixed, size: 18),
+        const SizedBox(width: 10),
+        const Expanded(child: Text("Live Location Data", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+        IconButton(onPressed: onRefreshLocation, icon: const Icon(Icons.refresh, size: 20))
+      ]),
+      const Divider(color: Colors.black12),
+      TextField(
+          controller: manualLocationController,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+          decoration: const InputDecoration(hintText: "Edit / Enter address manually...", border: InputBorder.none, icon: Icon(Icons.edit, size: 16))),
+    ]),
+  );
 
-  Widget _label(String t) => Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(t,
-          style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 11,
-              color: Colors.blueGrey)));
+  Widget _label(String t) => Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Text(t, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.blueGrey)));
 
-  Widget _flatDropdown(
-          List<String> items, String val, ValueChanged<String?> onChange) =>
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(20)),
-        child: DropdownButton<String>(
-          value: items.contains(val) ? val : items.first,
-          isExpanded: true,
-          underline: const SizedBox(),
-          items: items
-              .map((e) => DropdownMenuItem(
-                  value: e,
-                  child: Text(e,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14))))
-              .toList(),
-          onChanged: onChange,
-        ),
-      );
+  Widget _flatDropdown(List<String> items, String val, ValueChanged<String?> onChange) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+    child: DropdownButton<String>(
+      value: items.contains(val) ? val : items.first,
+      isExpanded: true,
+      underline: const SizedBox(),
+      items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)))).toList(),
+      onChanged: onChange,
+    ),
+  );
 
   InputDecoration _inputDeco(String h) => InputDecoration(
       hintText: h,
-      hintStyle: const TextStyle(
-          fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
+      hintStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
       filled: true,
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-      border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none));
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none));
 
   Widget _staticField(IconData i, String v) => Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
         child: Row(children: [
           Icon(i, size: 20, color: Colors.grey),
           const SizedBox(width: 12),
@@ -784,23 +920,13 @@ class DetailsScreen extends StatelessWidget {
 
   Widget _metaBox() => Container(
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-            color: const Color(0xFF121212),
-            borderRadius: BorderRadius.circular(25)),
+        decoration: BoxDecoration(color: const Color(0xFF121212), borderRadius: BorderRadius.circular(25)),
         child: const Row(children: [
           Icon(Icons.assignment_turned_in_rounded, color: Color(0xFFCDE48A)),
           SizedBox(width: 15),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text("Metadata Automatically Preserved",
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12)),
-                Text("Media EXIF and GPS are securely encrypted.",
-                    style: TextStyle(color: Colors.white60, fontSize: 11))
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text("Metadata Automatically Preserved", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12)),
+                Text("Media EXIF and GPS are securely encrypted.", style: TextStyle(color: Colors.white60, fontSize: 11))
               ])),
         ]),
       );
