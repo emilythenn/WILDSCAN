@@ -98,7 +98,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ detection, allDetections = []
   }, [evidenceItems]);
   const normalizedDiscoveryType = (detection?.discovery_type || "").toString().trim().toLowerCase();
   const isOnlineDiscovery = normalizedDiscoveryType.includes("online");
-  const isPhysicalDiscovery = normalizedDiscoveryType.includes("physical");
+  const discoveryTypeLabel = isOnlineDiscovery ? "Online" : "Physical";
 
   const evidenceHashIndex = useMemo(() => {
     const index = new Map<string, Set<string>>();
@@ -2427,30 +2427,32 @@ Return 2-3 sentences that include a clear risk level (High/Medium/Low), a brief 
 
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 rounded-lg transition-colors duration-200">
-            <p className="text-[9px] text-green-800 font-mono uppercase mb-2 font-semibold tracking-wider">Marketplace</p>
-            {isPhysicalDiscovery ? (
-              <div className="flex items-center gap-2">
-                <Share2 size={16} className="text-green-800" />
-                <span className="text-sm font-semibold truncate text-green-950">Physical</span>
-              </div>
-            ) : (
+            <p className="text-[9px] text-green-800 font-mono uppercase mb-2 font-semibold tracking-wider">Discovery Type</p>
+            <div className="flex items-center gap-2">
+              <Share2 size={16} className="text-green-800" />
+              <span className="text-sm font-semibold truncate text-green-950">{discoveryTypeLabel}</span>
+            </div>
+          </div>
+          {isOnlineDiscovery && (
+            <div className="bg-lime-200/60 border border-lime-300/50 hover:border-lime-400/50 p-3 rounded-lg transition-colors duration-200">
+              <p className="text-[9px] text-green-800 font-mono uppercase mb-2 font-semibold tracking-wider">Marketplace</p>
               <div className="flex items-center gap-2">
                 <Share2 size={16} className="text-green-800" />
                 <span className="text-sm font-semibold truncate text-green-950">{detection.platform_source || detection.source || "N/A"}</span>
               </div>
-            )}
-            {isOnlineDiscovery && onlineEvidenceLink && (
-              <a
-                href={onlineEvidenceLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-[11px] text-lime-700 hover:text-lime-800 underline break-all"
-              >
-                <LinkIcon size={12} />
-                {onlineEvidenceLink}
-              </a>
-            )}
-          </div>
+              {onlineEvidenceLink && (
+                <a
+                  href={onlineEvidenceLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] text-lime-700 hover:text-lime-800 underline break-all"
+                >
+                  <LinkIcon size={12} />
+                  {onlineEvidenceLink}
+                </a>
+              )}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => setShowGeoLocationModal(true)}
