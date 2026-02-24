@@ -32,6 +32,7 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
   const markersRef = useRef<{ [key: string]: any }>({});
   const infoWindowRef = useRef<any | null>(null);
   const routeRendererRef = useRef<any | null>(null);
+  const fallbackRouteLineRef = useRef<any | null>(null);
   const originMarkerRef = useRef<any | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [routeStatus, setRouteStatus] = useState<string | null>(null);
@@ -437,8 +438,13 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       }
 
       routeRendererRef.current.setMap(googleMap.current);
+      if (fallbackRouteLineRef.current) {
+        fallbackRouteLineRef.current.setMap(null);
+        fallbackRouteLineRef.current = null;
+      }
 
       const service = new win.google.maps.DirectionsService();
+      const geocoder = new win.google.maps.Geocoder();
 
       if (!originMarkerRef.current) {
         originMarkerRef.current = new win.google.maps.Marker({
@@ -461,98 +467,220 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       }
 
       updateCurrentAddress(origin);
-      
-      console.log("📤 Sending route request to Google Directions API...");
-      setRouteStatus("🔄 Building route...");
-      
-      service.route(
-        {
-          origin: originLatLng,
-          destination: destinationLatLng,
-          travelMode: win.google.maps.TravelMode.DRIVING,
-        },
-        (result: any, status: string) => {
-          console.log("📨 Directions API Response Status:", status);
-          
-          if (status === "OK" && result && result.routes && result.routes.length > 0) {
-            console.log("✅ Route found successfully");
-            routeRendererRef.current.setDirections(result);
-            const leg = result.routes[0]?.legs?.[0];
-            const duration = leg?.duration?.text;
-            const distance = leg?.distance?.text;
-            const durationSeconds = leg?.duration?.value || 0;
-            
-            const steps = Array.isArray(leg?.steps)
-              ? leg.steps
-                  .map((step: any) => {
-                    const instruction = (step?.instructions || "").replace(/<[^>]+>/g, "").trim();
-                    const endLat = toLat(step?.end_location);
-                    const endLng = toLng(step?.end_location);
-                    if (!instruction || !Number.isFinite(endLat) || !Number.isFinite(endLng)) return null;
-                    return {
-                      instruction,
-                      endLat,
-                      endLng,
-                      distance: step?.distance?.text,
-                      duration: step?.duration?.text,
-                    };
-                  })
-                  .filter(Boolean)
-              : [];
-            
-            setRouteSummary({ duration, distance });
-            setRouteSteps(steps as Array<{ instruction: string; endLat: number; endLng: number; distance?: string; duration?: string }>);
-            setCurrentStepIndex(0);
-            lastSpokenIndexRef.current = null;
-            setRouteStatus(`✅ Optimized route ready! ${distance} • ${duration} • ${steps.length} steps. Click "Start Guidance" to begin.`);
-          } else {
-            let errorMessage = `Unable to build route to case (${status})`;
-            let hint = "";
-            
-            switch(status) {
-              case "ZERO_RESULTS":
-                hint = "📍 No driving route exists. Try a different location or check coordinates are correct.";
-                console.error("ZERO_RESULTS: No route found between coordinates");
-                break;
-              case "NOT_FOUND":
-                hint = "🗺️ One or both locations could not be found on the map.";
-                console.error("NOT_FOUND: Location not found");
-                break;
-              case "MAX_WAYPOINTS_EXCEEDED":
-                hint = "⚠️ Too many waypoints. Simplify the route.";
-                console.error("MAX_WAYPOINTS_EXCEEDED");
-                break;
-              case "INVALID_REQUEST":
-                hint = "❌ Invalid request. Check origin and destination.";
-                console.error("INVALID_REQUEST", { origin: originLatLng, destination: destinationLatLng });
-                break;
-              case "OVER_QUERY_LIMIT":
-                hint = "⏱️ API rate limit exceeded. Try again later.";
-                console.error("OVER_QUERY_LIMIT");
-                break;
-              case "REQUEST_DENIED":
-                hint = "🔑 Check Maps API key, Directions API enabled, and billing configured.";
-                console.error("REQUEST_DENIED: Check API key and permissions");
-                break;
-              case "UNKNOWN_ERROR":
-                hint = "⚠️ Unknown server error. Try again later.";
-                console.error("UNKNOWN_ERROR");
-                break;
-              default:
-                hint = "Please check your location and try again.";
+
+      const travelModeCandidates = [
+        { mode: win.google.maps.TravelMode.DRIVING, label: "Driving" },
+        { mode: win.google.maps.TravelMode.BICYCLING, label: "Bicycling" },
+        { mode: win.google.maps.TravelMode.WALKING, label: "Walking" },
+      ];
+
+      const requestDirections = (request: any) => {
+        return new Promise<{ result: any; status: string }>((resolve) => {
+          service.route(request, (result: any, status: string) => {
+            resolve({ result, status });
+          });
+        });
+      };
+
+      const reverseGeocode = (location: { lat: number; lng: number }) => {
+        return new Promise<string | null>((resolve) => {
+          geocoder.geocode({ location }, (results: any, status: string) => {
+            if (status === "OK" && Array.isArray(results) && results[0]?.formatted_address) {
+              resolve(results[0].formatted_address as string);
+              return;
             }
-            
-            setRouteStatus(`${errorMessage}. ${hint}`.trim());
-            setRouteSummary(null);
-            setRouteSteps([]);
-            setCurrentStepIndex(0);
-            lastSpokenIndexRef.current = null;
-            if (routeRendererRef.current) {
-              routeRendererRef.current.setMap(null);
+            resolve(null);
+          });
+        });
+      };
+
+      const findBestRoute = async () => {
+        let lastStatus = "UNKNOWN_ERROR";
+
+        console.log("📤 Sending route request to Google Directions API...");
+        setRouteStatus("🔄 Building route...");
+
+        for (const candidate of travelModeCandidates) {
+          const { result, status } = await requestDirections({
+            origin: originLatLng,
+            destination: destinationLatLng,
+            travelMode: candidate.mode,
+          });
+          console.log(`📨 Directions API Response Status (${candidate.label}):`, status);
+          if (status === "OK" && result?.routes?.length > 0) {
+            return { result, status, modeLabel: candidate.label };
+          }
+          lastStatus = status;
+        }
+
+        const [originAddress, destinationAddress] = await Promise.all([
+          reverseGeocode({ lat: origLat, lng: origLng }),
+          reverseGeocode({ lat: destLat, lng: destLng }),
+        ]);
+
+        if (originAddress && destinationAddress) {
+          console.log("🧭 Retrying route using reverse-geocoded addresses");
+          for (const candidate of travelModeCandidates) {
+            const { result, status } = await requestDirections({
+              origin: originAddress,
+              destination: destinationAddress,
+              travelMode: candidate.mode,
+            });
+            console.log(`📨 Directions API Address Response (${candidate.label}):`, status);
+            if (status === "OK" && result?.routes?.length > 0) {
+              return { result, status, modeLabel: candidate.label };
             }
+            lastStatus = status;
           }
         }
-      );
+
+        return { result: null, status: lastStatus, modeLabel: "" };
+      };
+
+      const buildDirectFallbackRoute = () => {
+        if (!googleMap.current || !win.google?.maps) return;
+
+        if (routeRendererRef.current) {
+          routeRendererRef.current.setMap(null);
+        }
+        if (fallbackRouteLineRef.current) {
+          fallbackRouteLineRef.current.setMap(null);
+        }
+
+        fallbackRouteLineRef.current = new win.google.maps.Polyline({
+          path: [
+            { lat: origLat, lng: origLng },
+            { lat: destLat, lng: destLng },
+          ],
+          geodesic: true,
+          strokeColor: "#f59e0b",
+          strokeOpacity: 0.9,
+          strokeWeight: 4,
+          map: googleMap.current,
+        });
+
+        const bounds = new win.google.maps.LatLngBounds();
+        bounds.extend(new win.google.maps.LatLng(origLat, origLng));
+        bounds.extend(new win.google.maps.LatLng(destLat, destLng));
+        googleMap.current.fitBounds(bounds, 80);
+
+        const distanceKm = distanceMeters({ lat: origLat, lng: origLng }, { lat: destLat, lng: destLng }) / 1000;
+        const directDistance = `${distanceKm.toFixed(1)} km`;
+
+        setRouteSummary({ distance: directDistance, duration: "N/A" });
+        setRouteSteps([
+          {
+            instruction: "No mapped road route found. Navigate directly toward destination coordinates.",
+            endLat: destLat,
+            endLng: destLng,
+            distance: directDistance,
+            duration: "N/A",
+          },
+        ]);
+        setCurrentStepIndex(0);
+        lastSpokenIndexRef.current = null;
+        setRouteStatus(`⚠️ No Google road route available. Showing direct coordinate route (${directDistance}) from your location to case coordinates.`);
+      };
+      
+      findBestRoute().then(({ result, status, modeLabel }) => {
+        if (status === "OK" && result && result.routes && result.routes.length > 0) {
+          console.log("✅ Route found successfully");
+          routeRendererRef.current.setDirections(result);
+          const leg = result.routes[0]?.legs?.[0];
+          const duration = leg?.duration?.text;
+          const distance = leg?.distance?.text;
+
+          const steps = Array.isArray(leg?.steps)
+            ? leg.steps
+                .map((step: any) => {
+                  const instruction = (step?.instructions || "").replace(/<[^>]+>/g, "").trim();
+                  const endLat = toLat(step?.end_location);
+                  const endLng = toLng(step?.end_location);
+                  if (!instruction || !Number.isFinite(endLat) || !Number.isFinite(endLng)) return null;
+                  return {
+                    instruction,
+                    endLat,
+                    endLng,
+                    distance: step?.distance?.text,
+                    duration: step?.duration?.text,
+                  };
+                })
+                .filter(Boolean)
+            : [];
+
+          setRouteSummary({ duration, distance });
+          setRouteSteps(steps as Array<{ instruction: string; endLat: number; endLng: number; distance?: string; duration?: string }>);
+          setCurrentStepIndex(0);
+          lastSpokenIndexRef.current = null;
+          setRouteStatus(`✅ Optimized route ready (${modeLabel || "Best mode"})! ${distance} • ${duration} • ${steps.length} steps. Click "Start Guidance" to begin.`);
+          return;
+        }
+
+        let errorMessage = `Unable to build route to case (${status})`;
+        let hint = "";
+
+        switch(status) {
+          case "ZERO_RESULTS":
+            hint = "📍 No accessible road route found between your location and case point. Showing direct coordinate fallback route.";
+            console.error("ZERO_RESULTS: No route found between coordinates");
+            buildDirectFallbackRoute();
+            return;
+            break;
+          case "NOT_FOUND":
+            hint = "🗺️ One or both locations could not be found on the map.";
+            console.error("NOT_FOUND: Location not found");
+            break;
+          case "MAX_WAYPOINTS_EXCEEDED":
+            hint = "⚠️ Too many waypoints. Simplify the route.";
+            console.error("MAX_WAYPOINTS_EXCEEDED");
+            break;
+          case "INVALID_REQUEST":
+            hint = "❌ Invalid request. Check origin and destination.";
+            console.error("INVALID_REQUEST", { origin: originLatLng, destination: destinationLatLng });
+            break;
+          case "OVER_QUERY_LIMIT":
+            hint = "⏱️ API rate limit exceeded. Try again later.";
+            console.error("OVER_QUERY_LIMIT");
+            break;
+          case "REQUEST_DENIED":
+            hint = "🔑 Check Maps API key, Directions API enabled, and billing configured.";
+            console.error("REQUEST_DENIED: Check API key and permissions");
+            break;
+          case "UNKNOWN_ERROR":
+            hint = "⚠️ Unknown server error. Try again later.";
+            console.error("UNKNOWN_ERROR");
+            break;
+          default:
+            hint = "Please check your location and try again.";
+        }
+
+        setRouteStatus(`${errorMessage}. ${hint}`.trim());
+        setRouteSummary(null);
+        setRouteSteps([]);
+        setCurrentStepIndex(0);
+        lastSpokenIndexRef.current = null;
+        if (routeRendererRef.current) {
+          routeRendererRef.current.setMap(null);
+        }
+        if (fallbackRouteLineRef.current) {
+          fallbackRouteLineRef.current.setMap(null);
+          fallbackRouteLineRef.current = null;
+        }
+      }).catch((routeError: any) => {
+        console.error("❌ Route request pipeline error:", routeError);
+        setRouteStatus(`❌ Error building route: ${routeError?.message || "Unknown error"}`);
+        setRouteSummary(null);
+        setRouteSteps([]);
+        setCurrentStepIndex(0);
+        lastSpokenIndexRef.current = null;
+        if (routeRendererRef.current) {
+          routeRendererRef.current.setMap(null);
+        }
+        if (fallbackRouteLineRef.current) {
+          fallbackRouteLineRef.current.setMap(null);
+          fallbackRouteLineRef.current = null;
+        }
+      });
     } catch (error) {
       console.error("❌ Route building error:", error);
       setRouteStatus(`❌ Error building route: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -562,8 +690,12 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
       if (routeRendererRef.current) {
         routeRendererRef.current.setMap(null);
       }
+      if (fallbackRouteLineRef.current) {
+        fallbackRouteLineRef.current.setMap(null);
+        fallbackRouteLineRef.current = null;
+      }
     }
-  }, [buildOriginInfoContent, currentAddress, currentLocation, selectedDetection, updateCurrentAddress]);
+  }, [buildOriginInfoContent, currentAddress, currentLocation, selectedDetection, updateCurrentAddress, distanceMeters]);
 
   const optimizeMultipleCaseRoute = useCallback(async (origin: { lat: number; lng: number } | null) => {
     const win = window as any;
@@ -726,6 +858,10 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     if (routeRendererRef.current) {
       routeRendererRef.current.setMap(null);
     }
+    if (fallbackRouteLineRef.current) {
+      fallbackRouteLineRef.current.setMap(null);
+      fallbackRouteLineRef.current = null;
+    }
     if (originMarkerRef.current) {
       originMarkerRef.current.setMap(null);
     }
@@ -753,6 +889,10 @@ const CrimeMap: React.FC<CrimeMapProps> = ({ detections, selectedDetection, onMa
     setGuidanceStatus(null);
     if (routeRendererRef.current) {
       routeRendererRef.current.setMap(null);
+    }
+    if (fallbackRouteLineRef.current) {
+      fallbackRouteLineRef.current.setMap(null);
+      fallbackRouteLineRef.current = null;
     }
     if (originMarkerRef.current) {
       originMarkerRef.current.setMap(null);
