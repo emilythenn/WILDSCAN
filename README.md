@@ -27,11 +27,11 @@ WILDSCAN_REPORT_APP/
 1. **Clone repository:**
    ```bash
    git clone -b user-reporting-app https://github.com/emilythenn/WILDSCAN.git
-    cd WILDSCAN
+   cd WILDSCAN
    ```
 
 2. **Install dependencies:**
-  ```bash
+   ```bash
    flutter pub get
    ```
 
@@ -88,7 +88,7 @@ WILDSCAN_REPORT_APP/
 - Firestore existence check ensures no collisions
 - Batched writes guarantee atomic submission of cases + evidence collections
 
-## Innovation Highlights
+## 💡 Innovation Highlights
 - **GPS + Metadata Integrity:** Ensures verifiable location for every report
 - **Anonymous Reporting:** No personal identity required for submissions
 - **Atomic Firestore Writes:** Prevents partial submission errors
@@ -162,7 +162,7 @@ You must configure:
 
 Firestore batch writes ensure atomic integrity.
 
-### 🛡️ Anonymous & Secure Reporting
+## 🛡️ Anonymous & Secure Reporting
 - No identity required
 - Server-side timestamp validation
 - Cloud-hosted media storage
@@ -211,11 +211,6 @@ Ensures consistent categorization for enforcement analysis and heat-mapping.
 - Media stored off-device (Cloudinary CDN)
 - GPS metadata preserved
 - No local persistent sensitive storage
-
-## 📊 Database Collections
-
-- **`cases`** - Wildlife incident records
-- **`evidence`** - Media evidence linked to cases
 
 ## 📄 License
 
