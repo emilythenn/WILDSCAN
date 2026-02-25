@@ -419,13 +419,24 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   Future<String> _getUniqueCaseId() async {
-    final firestore = FirebaseFirestore.instance; int counter = 1;
-    while (true) {
-      String candidateId = "WS-${counter.toString().padLeft(4, '0')}";
-      var doc = await firestore.collection("cases").doc(candidateId).get();
-      if (!doc.exists) return candidateId; counter++;
+  final firestore = FirebaseFirestore.instance;
+  final counterRef = firestore.collection("counters").doc("cases");
+
+  return await firestore.runTransaction((transaction) async {
+    final snapshot = await transaction.get(counterRef);
+
+    int nextValue;
+    if (!snapshot.exists) {
+      transaction.set(counterRef, {'value': 1});
+      nextValue = 1;
+    } else {
+      int current = snapshot['value'];
+      nextValue = current + 1;
+      transaction.update(counterRef, {'value': nextValue});
     }
-  }
+    return "WS-${nextValue.toString().padLeft(4, '0')}";
+  });
+}
 
   double _uploadProgress = 0.0;
 

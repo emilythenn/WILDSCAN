@@ -102,7 +102,7 @@ WILDSCAN_REPORT_APP/
 |-----------------------------------------|------------------------------------------------------------------|
 | Web vs Mobile Geocoding Differences     | Implemented dual geocoding strategy (Placemark API + Nominatim fallback) |
 | Upload Progress Tracking with Multipart Stream | Custom streamed response handler to calculate byte progress     |
-| Unique Case ID Without Race Conditions  | Firestore existence loop with sequential validation              |
+| Unique Case ID Without Race Conditions  | Implemented Firestore Transactions to ensure atomic ID increments and zero collisions.              |
 | GPS Permission Denials                   | Graceful UI fallback with retry mechanism                        |
   
 ## 🔐 Backend Configuration
