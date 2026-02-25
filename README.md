@@ -114,5 +114,3 @@ Use `.gitignore` to exclude:
 ## 📄 License
 
 For wildlife protection, enforcement, and research purposes only.
-
----
