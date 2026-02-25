@@ -177,64 +177,95 @@ class _MainNavigationState extends State<MainNavigation> {
   final TextEditingController _manualLocationController = TextEditingController();
 
   String _getMalaysiaState(String? raw) {
-    if (raw == null || raw.isEmpty) return "Unknown State";
-    String input = raw.toLowerCase();
-    final statesMap = {
-      "johor": "Johor", "kedah": "Kedah", "kelantan": "Kelantan", "melaka": "Melaka",
-      "malacca": "Melaka", "negeri sembilan": "Negeri Sembilan", "pahang": "Pahang",
-      "perak": "Perak", "perlis": "Perlis", "pulau pinang": "Pulau Pinang",
-      "penang": "Pulau Pinang", "sabah": "Sabah", "sarawak": "Sarawak",
-      "selangor": "Selangor", "terengganu": "Terengganu", "kuala lumpur": "Kuala Lumpur",
-      "labuan": "Labuan", "putrajaya": "Putrajaya"
-    };
-    for (var entry in statesMap.entries) {
-      if (input.contains(entry.key)) return entry.value;
-    }
-    return "Other";
-  }
+  if (raw == null || raw.isEmpty) return "Unknown State";
+  String input = raw.toLowerCase();
 
+  final statesMap = {
+    "johor": "Johor",
+    "kedah": "Kedah",
+    "kelantan": "Kelantan",
+    "melaka": "Melaka", "malacca": "Melaka",
+    "negeri sembilan": "Negeri Sembilan", "n.sembilan": "Negeri Sembilan",
+    "pahang": "Pahang",
+    "perak": "Perak",
+    "perlis": "Perlis",
+    "pulau pinang": "Pulau Pinang", "penang": "Pulau Pinang",
+    "sabah": "Sabah",
+    "sarawak": "Sarawak",
+    "selangor": "Selangor",
+    "terengganu": "Terengganu",
+    "kuala lumpur": "Kuala Lumpur", "kl": "Kuala Lumpur",
+    "labuan": "Labuan",
+    "putrajaya": "Putrajaya"
+  };
+
+  for (var entry in statesMap.entries) {
+    if (input.contains(entry.key)) return entry.value;
+  }
+  return "Other";
+}
   Future<void> _updateLocation() async {
-    setState(() => displayLocation = "Searching for GPS signal...");
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
+  setState(() => displayLocation = "Searching for GPS signal...");
+  try {
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() => displayLocation = "Permission denied. Tap to retry.");
-          return;
-        }
+        setState(() => displayLocation = "Permission denied. Tap to retry.");
+        return;
       }
-      Position position = await Geolocator.getCurrentPosition(timeLimit: const Duration(seconds: 15));
-      lat = position.latitude; lng = position.longitude;
-      
-      String coords = "${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}";
-      String placeName = ""; String stateOnly = "Unknown State";
-      
-      if (kIsWeb) {
-        final url = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=10&addressdetails=1');
-        final response = await http.get(url, headers: {'User-Agent': 'WildScan_Hackathon'});
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          final addr = data['address'];
-          stateOnly = _getMalaysiaState(addr['state'] ?? addr['city'] ?? "");
-          placeName = addr['city'] ?? addr['state'] ?? addr['town'] ?? "";
-        }
-      } else {
-        List<Placemark> placemarks = await placemarkFromCoordinates(lat!, lng!);
-        if (placemarks.isNotEmpty) {
-          Placemark p = placemarks[0];
-          stateOnly = _getMalaysiaState(p.administrativeArea ?? p.locality);
-          placeName = "${p.locality ?? p.subAdministrativeArea ?? ''}";
-        }
-      }
-      setState(() { 
-        detectedState = stateOnly; 
-        displayLocation = placeName.trim().isEmpty ? coords : "${placeName.trim()} ($coords)";
-        _manualLocationController.text = displayLocation;
-      });
-    } catch (e) { setState(() => displayLocation = "Location Timeout. Tap to retry."); }
-  }
+    }
 
+    Position position = await Geolocator.getCurrentPosition(
+        timeLimit: const Duration(seconds: 15));
+    lat = position.latitude;
+    lng = position.longitude;
+
+    String fullAddress = "";
+    String stateOnly = "Unknown State";
+
+    if (kIsWeb) {
+      final url = Uri.parse(
+          'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1');
+      final response = await http.get(url, headers: {'User-Agent': 'WildScan_Hackathon'});
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final addr = data['address'];
+        
+        List<String> parts = [
+          addr['road'] ?? addr['pedestrian'] ?? '',
+          addr['suburb'] ?? addr['neighbourhood'] ?? '',
+          addr['postcode'] ?? '',
+          addr['city'] ?? addr['town'] ?? addr['village'] ?? '',
+          addr['state'] ?? ''
+        ];
+        fullAddress = parts.where((p) => p.isNotEmpty).join(", ");
+        stateOnly = _getMalaysiaState(addr['state'] ?? "");
+      }
+    } else {
+      List<Placemark> placemarks = await placemarkFromCoordinates(lat!, lng!);
+      if (placemarks.isNotEmpty) {
+        Placemark p = placemarks[0];
+        
+        fullAddress = "${p.street ?? ''}, ${p.postalCode ?? ''} ${p.locality ?? ''}, ${p.administrativeArea ?? ''}";
+        stateOnly = _getMalaysiaState(p.administrativeArea ?? p.locality);
+      }
+    }
+
+    setState(() {
+      detectedState = stateOnly;
+      String finalDisplay = fullAddress.trim().isEmpty ? "${lat!.toStringAsFixed(4)}, ${lng!.toStringAsFixed(4)}" : fullAddress;
+      
+      displayLocation = finalDisplay;
+      _manualLocationController.text = finalDisplay;
+    });
+    
+  } catch (e) {
+    setState(() => displayLocation = "Location Timeout. Tap to retry.");
+    debugPrint("Location Error: $e");
+  }
+}
   Future<void> _syncCoordinatesFromManualAddress(String address) async {
     if (address.isEmpty) return;
     try {
@@ -260,68 +291,93 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   Future<void> _handleSubmission() async {
-    setState(() => _isLoading = true);
-    try {
-      if (discoveryType == "Physical") {
-        await _syncCoordinatesFromManualAddress(_manualLocationController.text);
-      }
+  setState(() {
+    _isLoading = true;
+    _uploadProgress = 0.0;
+  });
+  
+  try {
+    String userTypedAddress = _manualLocationController.text.trim();
 
-      String uniqueId = await _getUniqueCaseId();
-      String numPart = uniqueId.split('-')[1];
-      final String? mediaUrl = await _uploadToCloudinary();
-      if (mediaUrl == null) throw Exception("Upload failed");
-
-      String finalSpecies = (selectedWildlife == "Others (Please specify)") ? (otherWildlife.isEmpty ? "Unknown Species" : otherWildlife) : selectedWildlife;
-      String finalPlatform = (selectedPlatform == "Others (Please specify)") ? (otherPlatform.isEmpty ? "Unknown Platform" : otherPlatform) : selectedPlatform;
-
-      String userTypedAddress = _manualLocationController.text;
-      String parsedState = _getMalaysiaState(userTypedAddress);
-      String finalState = (parsedState == "Unknown State" || parsedState == "Other") ? detectedState : parsedState;
-
-      final firestore = FirebaseFirestore.instance;
-      final batch = firestore.batch();
-      
-      String finalAddressDescription = discoveryType == "Online" ? "[Online Discovery] $userTypedAddress" : userTypedAddress;
-
-      batch.set(firestore.collection("cases").doc(uniqueId), {
-        "caseId": uniqueId, 
-        "speciesDetected": finalSpecies, 
-        "status": "OPEN", 
-        "createdAt": FieldValue.serverTimestamp(), 
-        "reportTime": reportTime, 
-        "state": finalState,
-        "discoveryType": discoveryType,
-        "location": { "lat": lat ?? 0.0, "lng": lng ?? 0.0, "fullAddress": finalAddressDescription },
-      });
-
-      batch.set(firestore.collection("evidence").doc("EV-$numPart"), {
-        "evidenceId": "EV-$numPart", 
-        "caseId": uniqueId, 
-        "fileUrl": mediaUrl, 
-        "mediaType": selectedImage!.path.toLowerCase().endsWith('.mp4') ? "video" : "image", 
-        "platformSource": discoveryType == "Online" ? finalPlatform : "Physical Location",
-        "onlineLink": discoveryType == "Online" ? onlineLink : "",
-        "uploadedAt": FieldValue.serverTimestamp(),
-      });
-
-      await batch.commit();
-      setState(() { currentGeneratedId = uniqueId; _isLoading = false; _currentIndex = 2; });
-    } catch (e) { 
-      setState(() => _isLoading = false); 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Submission Error: $e"))); 
+    if (discoveryType == "Physical" && userTypedAddress.isNotEmpty) {
+      await _syncCoordinatesFromManualAddress(userTypedAddress);
     }
-  }
-bool _canSubmit() {
-  if (selectedImage == null) return false;
 
-  if (discoveryType == "Online") {
+    String parsedState = _getMalaysiaState(userTypedAddress);
+    String finalState = (parsedState == "Unknown State" || parsedState == "Other") 
+        ? detectedState 
+        : parsedState;
+
+    String uniqueId = await _getUniqueCaseId();
+    String numPart = uniqueId.split('-')[1];
+
+    final String? mediaUrl = await _uploadToCloudinary();
+    if (mediaUrl == null) throw Exception("Media upload failed.");
+
+    String finalSpecies = (selectedWildlife == "Others (Please specify)") 
+        ? (otherWildlife.isEmpty ? "Unknown Species" : otherWildlife) 
+        : selectedWildlife;
+        
+    String finalPlatform = (selectedPlatform == "Others (Please specify)") 
+        ? (otherPlatform.isEmpty ? "Unknown Platform" : otherPlatform) 
+        : selectedPlatform;
+
+    String finalAddressDescription = discoveryType == "Online" 
+        ? "[Online Discovery] $userTypedAddress" 
+        : userTypedAddress;
+
+    final firestore = FirebaseFirestore.instance;
+    final batch = firestore.batch();
+    
+    batch.set(firestore.collection("cases").doc(uniqueId), {
+      "caseId": uniqueId, 
+      "speciesDetected": finalSpecies, 
+      "status": "OPEN", 
+      "createdAt": FieldValue.serverTimestamp(), 
+      "reportTime": reportTime, 
+      "state": finalState,
+      "discoveryType": discoveryType,
+      "location": { 
+        "lat": lat ?? 0.0, 
+        "lng": lng ?? 0.0, 
+        "fullAddress": finalAddressDescription 
+      },
+    });
+
+    batch.set(firestore.collection("evidence").doc("EV-$numPart"), {
+      "evidenceId": "EV-$numPart", 
+      "caseId": uniqueId, 
+      "fileUrl": mediaUrl, 
+      "mediaType": selectedImage!.path.toLowerCase().endsWith('.mp4') ? "video" : "image", 
+      "platformSource": discoveryType == "Online" ? finalPlatform : "Physical Location",
+      "onlineLink": discoveryType == "Online" ? onlineLink : "",
+      "uploadedAt": FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+
+    setState(() { 
+      currentGeneratedId = uniqueId; 
+      _isLoading = false; 
+      _currentIndex = 2; 
+    });
+
+  } catch (e) { 
+    setState(() => _isLoading = false); 
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent)
+    ); 
+  }
+}
+  bool _canSubmit() {
+    if (selectedImage == null) return false;
+    if (discoveryType == "Online") {
     if (onlineLink.trim().length < 5) return false;
     if (selectedPlatform == "Others (Please specify)" && otherPlatform.trim().isEmpty) return false;
   } else {
     if (_manualLocationController.text.trim().isEmpty) return false;
   }
-  
-  if (selectedWildlife == "Others (Please specify)" && otherWildlife.trim().isEmpty) return false;
+    if (selectedWildlife == "Others (Please specify)" && otherWildlife.trim().isEmpty) return false;
 
   return true;
 }
@@ -371,22 +427,66 @@ bool _canSubmit() {
     }
   }
 
-  Future<String?> _uploadToCloudinary() async {
-    if (selectedImage == null) return null;
-    const String cloudName = "dqzneohta"; const String uploadPreset = "wildscan_preset";
-    final url = Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/auto/upload');
-    try {
-      final request = http.MultipartRequest('POST', url)..fields['upload_preset'] = uploadPreset;
-      if (kIsWeb) {
-        final bytes = await selectedImage!.readAsBytes();
-        request.files.add(http.MultipartFile.fromBytes('file', bytes, filename: selectedImage!.name));
-      } else {
-        request.files.add(await http.MultipartFile.fromPath('file', selectedImage!.path));
-      }
-      final response = await http.Response.fromStream(await request.send());
-      return response.statusCode == 200 ? jsonDecode(response.body)['secure_url'] : null;
-    } catch (e) { return null; }
+  double _uploadProgress = 0.0;
+
+Future<String?> _uploadToCloudinary() async {
+  if (selectedImage == null) return null;
+  
+  const String cloudName = "dqzneohta";
+  const String uploadPreset = "wildscan_preset";
+  final url = Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/auto/upload');
+
+  try {
+    List<int> fileBytes;
+    String fileName = selectedImage!.name;
+    
+    if (kIsWeb) {
+      fileBytes = await selectedImage!.readAsBytes();
+    } else {
+      fileBytes = await File(selectedImage!.path).readAsBytes();
+    }
+
+    final request = http.MultipartRequest('POST', url)
+      ..fields['upload_preset'] = uploadPreset;
+
+    final multipartFile = http.MultipartFile.fromBytes(
+      'file', 
+      fileBytes, 
+      filename: fileName
+    );
+
+    final totalByteLength = multipartFile.length;
+    request.files.add(multipartFile);
+
+    final httpClient = http.Client();
+    final streamedResponse = await httpClient.send(request);
+
+    List<int> responseBytes = [];
+    int transferred = 0;
+
+    await for (var chunk in streamedResponse.stream) {
+      responseBytes.addAll(chunk);
+      transferred += chunk.length;
+
+      setState(() {
+        _uploadProgress = transferred / totalByteLength;
+      });
+    }
+
+    final response = http.Response(
+      utf8.decode(responseBytes),
+      streamedResponse.statusCode,
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body)['secure_url'];
+    }
+    return null;
+  } catch (e) {
+    debugPrint("Upload Error: $e");
+    return null;
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -416,57 +516,90 @@ bool _canSubmit() {
     ];
 
     return Scaffold(
-      body: Stack(
-        children: [
-          SafeArea(child: _pages[_currentIndex]),
-          if (_isLoading) Container(color: Colors.black45, child: const Center(child: CircularProgressIndicator(color: Colors.white))),
-        ],
+body: Stack(
+  children: [
+    SafeArea(child: _pages[_currentIndex]),
+    if (_isLoading)
+      Container(
+        color: Colors.black54, 
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(
+                value: _uploadProgress > 0 ? _uploadProgress : null, 
+                color: const Color(0xFFCDE48A),
+                strokeWidth: 5,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                "Uploading Evidence: ${(_uploadProgress * 100).toStringAsFixed(0)}%",
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Please do not close the app",
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
       ),
+  ],
+),
 floatingActionButton: _currentIndex < 2
     ? Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: SizedBox(
-          width: double.infinity, height: 65,
+          width: double.infinity,
+          height: 65,
           child: FloatingActionButton.extended(
             elevation: 0,
             onPressed: () {
               if (_currentIndex == 0) {
                 _showPickerOptions(context);
               } else {
-                if (discoveryType == "Online" && onlineLink.trim().isEmpty) {
+                if (!_canSubmit()) {
+                  String errorMsg = "Please complete all required fields";
+                  if (discoveryType == "Online" && onlineLink.trim().isEmpty) {
+                    errorMsg = "Please provide the Online Link/URL";
+                  } else if (discoveryType == "Physical" && _manualLocationController.text.trim().isEmpty) {
+                    errorMsg = "Please provide a physical address";
+                  } else if (selectedWildlife == "Others (Please specify)" && otherWildlife.trim().isEmpty) {
+                    errorMsg = "Please specify the wildlife species";
+                  }
+                  
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Please provide the Online Link/URL"),
-                      backgroundColor: Colors.redAccent,
-                    ),
+                    SnackBar(content: Text(errorMsg), backgroundColor: Colors.redAccent),
                   );
                   return;
                 }
                 
-                if (discoveryType == "Physical" && _manualLocationController.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Please provide a physical address"),
-                      backgroundColor: Colors.redAccent,
-                    ),
-                  );
-                  return; 
-                }
                 _handleSubmission();
               }
             },
-            backgroundColor: (_currentIndex == 1 && discoveryType == "Online" && onlineLink.trim().isEmpty)
-                ? Colors.grey.shade700
+            backgroundColor: (_currentIndex == 1 && !_canSubmit())
+                ? Colors.grey.shade400
                 : const Color(0xFF121212),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
-            label: Row(children: [
-              Text(
-                _currentIndex == 0 ? "Next: Verify Details" : "Submit Report", 
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.arrow_forward_rounded, color: Colors.white)
-            ]),
+            label: Row(
+              children: [
+                Text(
+                  _currentIndex == 0 ? "Next: Verify Details" : "Submit Report",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_forward_rounded, color: Colors.white)
+              ],
+            ),
           ),
         ),
       )
@@ -822,24 +955,48 @@ class DetailsScreen extends StatelessWidget {
 
   Widget _buildPhysicalLocationSection() => Container(
     padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(color: const Color(0xFFCDE48A), borderRadius: BorderRadius.circular(20)),
-    child: Column(children: [
-      Row(children: [
-        const Icon(Icons.gps_fixed, size: 18),
-        const SizedBox(width: 10),
-        const Expanded(child: Text("Live Location Data", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
-        IconButton(onPressed: onRefreshLocation, icon: const Icon(Icons.refresh, size: 20))
-      ]),
-      const Divider(color: Colors.black12),
-      TextField(
-          controller: manualLocationController,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
-          decoration: const InputDecoration(
-            hintText: "Edit / Enter address manually...", 
-            border: InputBorder.none, 
-            icon: Icon(Icons.edit, size: 16)
-          )),
-    ]),
+    decoration: BoxDecoration(
+      color: const Color(0xFFCDE48A), 
+      borderRadius: BorderRadius.circular(20)
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start, 
+      children: [
+        Row(children: [
+          const Icon(Icons.gps_fixed, size: 18),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text("Live Location Data", 
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
+          ),
+          IconButton(onPressed: onRefreshLocation, icon: const Icon(Icons.refresh, size: 20))
+        ]),
+        const Divider(color: Colors.black12),
+        TextField(
+            controller: manualLocationController,
+            onChanged: (value) {},
+            maxLines: null,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+            decoration: const InputDecoration(
+              hintText: "Edit / Enter address manually...", 
+              border: InputBorder.none, 
+              icon: Icon(Icons.edit, size: 16)
+            )),
+
+        const Padding(
+          padding: EdgeInsets.only(top: 8.0, left: 26.0), 
+          child: Text(
+            "Tip: You can manually edit the address if the GPS is slightly off.",
+            style: TextStyle(
+              fontSize: 10, 
+              color: Color(0xFF4A5D23), 
+              fontStyle: FontStyle.italic,
+              fontWeight: FontWeight.w500
+            ),
+          ),
+        ),
+      ],
+    ),
   );
 
   Widget _label(String t) => Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Text(t, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.blueGrey)));
