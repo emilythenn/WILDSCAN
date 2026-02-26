@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+import hashlib
 from typing import Any, Dict
 
 from dotenv import load_dotenv
@@ -15,47 +16,41 @@ load_dotenv()
 EVIDENCE_COLLECTION = "evidence"
 CASES_COLLECTION = "cases"
 
-SCANNER_VERSION = "member1-v1.0"
-PROCESSING_NODE = "local-dev"  # change to cloud-run-1 later
+SCANNER_VERSION = "member1-v1.1"
+PROCESSING_NODE = "local-dev"
 AI_MODEL_VERSION = "models/gemini-2.5-flash"
 
 DEFAULT_LOCATION = {
-    "lat": 4.2105,      # Malaysia approx center
+    "lat": 4.2105,
     "lng": 101.9758,
     "state": "Unknown"
 }
 
-# ---------- Helpers: clean naming ----------
-def pick_species_name(gem: dict, rule: dict) -> str:
-    # Biological animal name
-    return (gem.get("suspectedSpecies") or rule.get("species") or "Unknown").strip() if isinstance(
-        (gem.get("suspectedSpecies") or rule.get("species") or "Unknown"), str
-    ) else "Unknown"
-
-def pick_illegal_product(gem: dict, rule: dict) -> str:
-    """
-    What is being trafficked / extracted (contraband).
-    Prefer Gemini 'illegalProduct' if your prompt returns it.
-    Fallback: rule's 'speciesDetected' if your rules use that naming.
-    Otherwise Unknown.
-    """
-    val = gem.get("illegalProduct") or rule.get("illegalProduct") or rule.get("speciesDetected")
-    if isinstance(val, str) and val.strip():
-        return val.strip()
-    return "Unknown"
+# ---------------------------------------------------
+# Basic helpers
+# ---------------------------------------------------
 
 def is_unprocessed(ev):
-    return True
+    if not ev:
+        return True
+    if not ev.get("aiScannedAt"):
+        return True
+    if not ev.get("scannerVersion"):
+        return True
+    return ev.get("scannerVersion") != SCANNER_VERSION
 
 def download_image_bytes(url: str) -> bytes:
     r = requests.get(url, timeout=30)
     r.raise_for_status()
     return r.content
 
+def sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
 def init_clients():
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("VITE_GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("Missing GEMINI_API_KEY (or VITE_GEMINI_API_KEY) in .env")
+        raise RuntimeError("Missing GEMINI_API_KEY in .env")
 
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(AI_MODEL_VERSION)
@@ -77,7 +72,32 @@ def gemini_analyze_image(model, image_bytes: bytes) -> Dict[str, Any]:
     if start != -1 and end != -1:
         text = text[start:end + 1]
 
-    return json.loads(text)
+    parsed = json.loads(text)
+
+    return {
+        "suspectedSpecies": parsed.get("suspectedSpecies", ""),
+        "illegalProduct": parsed.get("illegalProduct", ""),
+        "confidence": float(parsed.get("confidence", 0.5)),
+        "summary": parsed.get("summary", ""),
+        "codeWords": parsed.get("codeWords", []),
+        "reasons": parsed.get("reasons", []),
+        "stateGuess": parsed.get("stateGuess", "")
+    }
+
+def combine_priority(rule_priority: str, gem_confidence: float) -> str:
+    """
+    Hybrid logic:
+    - Keep your rule priority as base.
+    - If AI confidence is strong (>0.8), escalate one level.
+    """
+
+    if gem_confidence >= 0.85:
+        return "HIGH"
+
+    if gem_confidence >= 0.75 and rule_priority == "LOW":
+        return "MEDIUM"
+
+    return rule_priority
 
 def get_next_case_id(db) -> str:
     docs = (
@@ -97,112 +117,26 @@ def get_next_case_id(db) -> str:
     num = int(latest_id.split("-")[1])
     return f"WS-{num+1:04d}"
 
-def _guess_location_from_gem(gem: dict) -> dict:
-    location = DEFAULT_LOCATION.copy()
-    state_guess = gem.get("stateGuess")
-    if isinstance(state_guess, str) and state_guess.strip():
-        location["state"] = state_guess.strip()
-    return location
+def find_duplicate_case(db, evidence_hash: str, current_case_id: str):
+    if not evidence_hash:
+        return None
 
-def create_case(db, case_id: str, gem: dict, rule: dict, platform: str):
-    now = firestore.SERVER_TIMESTAMP
-    location = _guess_location_from_gem(gem)
+    q = (
+        db.collection(CASES_COLLECTION)
+        .where("evidenceHash", "==", evidence_hash)
+        .limit(3)
+        .stream()
+    )
 
-    species_name = pick_species_name(gem, rule)
-    illegal_product = pick_illegal_product(gem, rule)
+    for doc in q:
+        if doc.id != current_case_id:
+            return doc.id
 
-    payload = {
-        # Main fields for dashboard
-        "confidenceScore": float(gem.get("confidence", 0.5)),
-        "createdAt": now,
-        "updatedAt": now,
-        "statusDate": now,
-        "priority": rule["priority"],  # LOW/MEDIUM/HIGH
-        "source": "AI_SCANNER",
-        "Status": "Pending",
-        "location": location,
+    return None
 
-        # ✅ NEW CLEAR NAMES
-        "detectedSpeciesName": species_name,           # animal name
-        "detectedIllegalProduct": illegal_product,     # contraband / product type
-
-        # ✅ Backward compatibility (keep your old key so UI won't break)
-        "SpeciesDetected": species_name,
-
-        # Extra helpful fields
-        "riskScore": int(rule["riskScore"]),
-        "platformSource": platform or "Unknown",
-        "reasonSummary": gem.get("summary") or "Suspicious content detected.",
-        "codeWords": gem.get("codeWords", rule.get("codeWords", [])),
-        "reasons": gem.get("reasons", rule.get("reasons", [])),
-
-        # Scanning state
-        "aiScannedAt": now,
-        "aiProcessed": True,
-
-        # Traceability
-        "aiModelVersion": AI_MODEL_VERSION,
-        "scannerVersion": SCANNER_VERSION,
-        "processingNode": PROCESSING_NODE,
-    }
-
-    db.collection(CASES_COLLECTION).document(case_id).set(payload)
-    return payload
-
-def update_case(db, case_id: str, gem: dict, rule: dict, platform: str):
-    now = firestore.SERVER_TIMESTAMP
-    location = _guess_location_from_gem(gem)
-
-    species_name = pick_species_name(gem, rule)
-    illegal_product = pick_illegal_product(gem, rule)
-
-    updates = {
-        "confidenceScore": float(gem.get("confidence", 0.5)),
-        "updatedAt": now,
-        "statusDate": now,
-
-        "priority": rule["priority"],
-        "riskScore": int(rule["riskScore"]),
-        "platformSource": platform or "Unknown",
-
-        # ✅ NEW CLEAR NAMES
-        "detectedSpeciesName": species_name,
-        "detectedIllegalProduct": illegal_product,
-
-        # ✅ Backward compatibility
-        "SpeciesDetected": species_name,
-
-        "reasonSummary": gem.get("summary") or "Suspicious content detected.",
-        "codeWords": gem.get("codeWords", rule.get("codeWords", [])),
-        "reasons": gem.get("reasons", rule.get("reasons", [])),
-
-        "aiScannedAt": now,
-        "aiProcessed": True,
-
-        "aiModelVersion": AI_MODEL_VERSION,
-        "scannerVersion": SCANNER_VERSION,
-        "processingNode": PROCESSING_NODE,
-
-        "location": location,
-        "source": "AI_SCANNER",
-    }
-
-    db.collection(CASES_COLLECTION).document(case_id).set(updates, merge=True)
-
-def update_evidence(db, evidence_id: str, case_id: str, gem: dict):
-    now = firestore.SERVER_TIMESTAMP
-    updates = {
-        "caseId": case_id,
-        "aiSummary": gem.get("summary", ""),
-        "aiConfidence": float(gem.get("confidence", 0.5)),
-        "aiModelVersion": AI_MODEL_VERSION,
-        "scannerVersion": SCANNER_VERSION,
-        "processingNode": PROCESSING_NODE,
-        "aiScannedAt": now,
-        "updatedAt": now,
-    }
-
-    db.collection(EVIDENCE_COLLECTION).document(evidence_id).set(updates, merge=True)
+# ---------------------------------------------------
+# Core Processing
+# ---------------------------------------------------
 
 def process_evidence_doc(db, model, ev_doc):
     evidence_id = ev_doc.id
@@ -215,40 +149,90 @@ def process_evidence_doc(db, model, ev_doc):
         print(f"[SKIP] {evidence_id}: missing fileUrl")
         return
 
-    print(f"[PROCESS] evidence={evidence_id}, platform={platform}")
-    img_bytes = download_image_bytes(file_url)
+    print(f"[PROCESS] evidence={evidence_id}")
 
-    # 1) Gemini
+    # 1) Download image + hash
+    img_bytes = download_image_bytes(file_url)
+    evidence_hash = sha256_hex(img_bytes)
+
+    # 2) Gemini
     try:
         gem = gemini_analyze_image(model, img_bytes)
     except Exception as e:
-        print(f"[ERROR] Gemini failed for evidence={evidence_id}: {e}")
+        print(f"[ERROR] Gemini failed: {e}")
         return
 
-    # 2) Rules score
+    # 3) Rules scoring (your exact rules.py)
     blob = " ".join([
+        str(platform),
+        str(ev.get("caption", "")),
+        str(ev.get("description", "")),
         str(gem.get("suspectedSpecies", "")),
         str(gem.get("summary", "")),
-        " ".join(gem.get("codeWords", []) if isinstance(gem.get("codeWords", []), list) else []),
-        " ".join(gem.get("reasons", []) if isinstance(gem.get("reasons", []), list) else []),
+        " ".join(gem.get("codeWords", [])),
+        " ".join(gem.get("reasons", [])),
     ])
+
     rule = score_text(blob)
 
-    # 3) Create/ensure case id
+    # 4) Hybrid priority
+    final_priority = combine_priority(
+        rule["priority"],
+        gem.get("confidence", 0.5)
+    )
+
+    # 5) Case ID
     case_id = ev.get("caseId") or get_next_case_id(db)
 
-    case_ref = db.collection(CASES_COLLECTION).document(case_id)
-    if not case_ref.get().exists:
-        create_case(db, case_id, gem, rule, platform)
-        print(f"[OK] created case {case_id}")
+    duplicate_of = find_duplicate_case(db, evidence_hash, case_id)
+    is_duplicate = bool(duplicate_of)
 
-    # 3b) Always update case
-    update_case(db, case_id, gem, rule, platform)
-    print(f"[OK] updated case {case_id}")
+    now = firestore.SERVER_TIMESTAMP
 
-    # 4) Update evidence
-    update_evidence(db, evidence_id, case_id, gem)
-    print(f"[OK] updated evidence {evidence_id} -> caseId {case_id}")
+    case_payload = {
+        "confidenceScore": gem.get("confidence", 0.5),
+        "riskScore": rule["riskScore"],
+        "priority": final_priority,
+        "platformSource": platform,
+
+        "detectedSpeciesName": gem.get("suspectedSpecies") or rule.get("species"),
+        "detectedIllegalProduct": gem.get("illegalProduct") or "Unknown",
+
+        "reasonSummary": gem.get("summary"),
+        "codeWords": rule.get("codeWords", []),
+        "reasons": rule.get("reasons", []),
+
+        "evidenceHash": evidence_hash,
+        "isDuplicate": is_duplicate,
+        "duplicateOfCaseId": duplicate_of,
+
+        "aiScannedAt": now,
+        "aiProcessed": True,
+        "scannerVersion": SCANNER_VERSION,
+        "aiModelVersion": AI_MODEL_VERSION,
+        "processingNode": PROCESSING_NODE,
+
+        "updatedAt": now,
+        "source": "AI_SCANNER",
+        "Status": "Pending"
+    }
+
+    db.collection(CASES_COLLECTION).document(case_id).set(case_payload, merge=True)
+
+    db.collection(EVIDENCE_COLLECTION).document(evidence_id).set({
+        "caseId": case_id,
+        "aiSummary": gem.get("summary"),
+        "aiConfidence": gem.get("confidence", 0.5),
+        "aiRiskLevel": final_priority,
+        "evidenceHash": evidence_hash,
+        "isDuplicate": is_duplicate,
+        "duplicateOfCaseId": duplicate_of,
+        "aiScannedAt": now,
+        "scannerVersion": SCANNER_VERSION,
+        "updatedAt": now
+    }, merge=True)
+
+    print(f"[OK] case {case_id} updated (Priority: {final_priority})")
 
 def main():
     db, model = init_clients()
@@ -261,9 +245,9 @@ def main():
     )
 
     processed = 0
+
     for d in docs:
-        ev = d.to_dict()
-        if is_unprocessed(ev):
+        if is_unprocessed(d.to_dict()):
             process_evidence_doc(db, model, d)
             processed += 1
 
