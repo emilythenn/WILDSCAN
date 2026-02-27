@@ -63,6 +63,7 @@ Functionalities:
 - Map-based visualization
 - Evidence preview & metadata display
 - AI output verification interface
+- Direct communication with assigned PIC via WhatsApp or email
 
 ## 🛠 Technical Implementation Overview
 
